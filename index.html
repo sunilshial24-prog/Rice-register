@@ -1,0 +1,2254 @@
+<!doctype html>
+<html lang="en-IN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<meta name="theme-color" content="#0f172a" />
+<title>FPS Rice Register — NFSA & CMAY</title>
+<link rel="manifest" href="./manifest.json" />
+<link rel="icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='12' fill='%230f172a'/><text x='32' y='42' font-size='36' text-anchor='middle'>🍚</text></svg>" />
+<style>
+/* =============================================================
+   FPS Rice Register — global styles
+   ============================================================= */
+:root{
+  --bg:#0b1220; --panel:#0f172a; --panel-2:#111c34; --card:#0e1a33;
+  --line:#1e2b4d; --line-2:#243357;
+  --text:#e5eefc; --muted:#93a4c7; --dim:#5f7297;
+  --accent:#38bdf8; --accent-2:#0ea5e9;
+  --ok:#22c55e; --warn:#f59e0b; --err:#ef4444;
+  --aay:#3b82f6; --phh:#22c55e; --sfss:#a855f7;
+  --nfsa:#0ea5e9; --cmay:#f97316;
+  --shadow: 0 10px 30px rgba(0,0,0,.35);
+  --radius:14px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif;
+  font-size:14px; -webkit-tap-highlight-color:transparent}
+button,input,select,textarea{font:inherit;color:inherit}
+a{color:var(--accent);text-decoration:none}
+h1,h2,h3,h4{margin:0 0 8px}
+h1{font-size:1.15rem} h2{font-size:1.02rem} h3{font-size:.95rem}
+small{color:var(--muted)}
+.hidden{display:none!important}
+
+/* Layout ------------------------------------------------------ */
+.app{display:grid; grid-template-columns:260px 1fr; min-height:100vh}
+.sidebar{background:var(--panel); border-right:1px solid var(--line);
+  padding:14px 10px; position:sticky; top:0; height:100vh; overflow:auto}
+.brand{display:flex; align-items:center; gap:10px; padding:6px 8px 12px;
+  border-bottom:1px solid var(--line); margin-bottom:10px}
+.brand .logo{width:36px;height:36px;border-radius:10px;background:#1e293b;
+  display:grid;place-items:center;font-size:20px}
+.brand .name{font-weight:700; letter-spacing:.2px}
+.brand .sub{color:var(--muted); font-size:11px}
+
+.reg-switch{display:flex; gap:6px; padding:6px 0 10px}
+.reg-switch button{flex:1; padding:9px 8px; border-radius:10px; border:1px solid var(--line);
+  background:#0b1730; color:var(--text); font-weight:700; cursor:pointer}
+.reg-switch button.on.nfsa{background:linear-gradient(180deg,#0ea5e9,#0284c7); border-color:#0284c7}
+.reg-switch button.on.cmay{background:linear-gradient(180deg,#fb923c,#ea580c); border-color:#ea580c}
+
+.nav{display:flex; flex-direction:column; gap:2px}
+.nav .group{color:var(--dim); font-size:11px; text-transform:uppercase;
+  letter-spacing:.12em; padding:12px 10px 4px}
+.nav a{display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:10px;
+  color:var(--text); cursor:pointer; user-select:none}
+.nav a:hover{background:#0b1730}
+.nav a.active{background:#132446; color:#fff; border:1px solid var(--line-2)}
+.nav a .ic{width:22px; text-align:center}
+
+/* Main -------------------------------------------------------- */
+.main{padding:16px; max-width:1400px; width:100%}
+.topbar{display:flex; align-items:center; justify-content:space-between;
+  gap:10px; margin-bottom:12px; flex-wrap:wrap}
+.topbar .title{display:flex; align-items:center; gap:10px}
+.badge{display:inline-flex; align-items:center; gap:6px; padding:5px 10px;
+  border-radius:999px; background:#0b1730; border:1px solid var(--line);
+  font-size:12px; color:var(--muted)}
+.badge.nfsa{color:#e0f2fe; border-color:#0369a1; background:#0c2a44}
+.badge.cmay{color:#ffedd5; border-color:#c2410c; background:#3a1c0d}
+.badge.on{background:#052e1c; border-color:#166534; color:#bbf7d0}
+.badge.off{background:#3f1d1d; border-color:#7f1d1d; color:#fecaca}
+.badge.pend{background:#3b2b06; border-color:#a16207; color:#fde68a}
+
+.scheme-chips{display:flex; gap:8px; flex-wrap:wrap}
+.chip{padding:8px 12px; border-radius:999px; border:1px solid var(--line);
+  background:#0b1730; color:var(--text); cursor:pointer; font-weight:600; font-size:13px}
+.chip .dot{display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px}
+.chip.aay .dot{background:var(--aay)} .chip.phh .dot{background:var(--phh)} .chip.sfss .dot{background:var(--sfss)}
+.chip.on.aay{background:#0b2545; border-color:var(--aay); color:#dbeafe}
+.chip.on.phh{background:#0b2e1c; border-color:var(--phh); color:#dcfce7}
+.chip.on.sfss{background:#25123f; border-color:var(--sfss); color:#f3e8ff}
+
+/* Cards / grid ------------------------------------------------ */
+.grid{display:grid; gap:12px}
+.grid.k4{grid-template-columns:repeat(4,1fr)}
+.grid.k3{grid-template-columns:repeat(3,1fr)}
+.grid.k2{grid-template-columns:repeat(2,1fr)}
+.card{background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+  padding:14px; box-shadow:var(--shadow)}
+.card h3{margin:0 0 4px; color:#cfe0ff}
+.kpi{display:flex; flex-direction:column; gap:2px}
+.kpi .lbl{color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.08em}
+.kpi .val{font-size:1.55rem; font-weight:800; letter-spacing:-.5px}
+.kpi .val.small{font-size:1.15rem}
+.kpi .sub{color:var(--muted); font-size:12px}
+.kpi.blue{background:linear-gradient(180deg,#0b2545,#0c1a35)}
+.kpi.green{background:linear-gradient(180deg,#0b2e1c,#0c1a1a)}
+.kpi.violet{background:linear-gradient(180deg,#26113f,#0f0a20)}
+.kpi.orange{background:linear-gradient(180deg,#3a1c0d,#1a0f0a)}
+
+/* Buttons ----------------------------------------------------- */
+.btn{display:inline-flex; align-items:center; justify-content:center; gap:8px;
+  padding:10px 14px; border-radius:10px; border:1px solid var(--line);
+  background:#0b1730; color:var(--text); cursor:pointer; font-weight:600}
+.btn:hover{background:#132446}
+.btn.primary{background:linear-gradient(180deg,#0ea5e9,#0284c7); border-color:#0284c7; color:#fff}
+.btn.ok{background:linear-gradient(180deg,#22c55e,#15803d); border-color:#15803d; color:#fff}
+.btn.warn{background:linear-gradient(180deg,#f59e0b,#b45309); border-color:#b45309; color:#fff}
+.btn.err{background:linear-gradient(180deg,#ef4444,#991b1b); border-color:#991b1b; color:#fff}
+.btn.ghost{background:transparent}
+.btn.block{width:100%}
+.btn.sm{padding:6px 10px; font-size:12px}
+.btn:disabled{opacity:.5; cursor:not-allowed}
+.actions{display:flex; gap:8px; flex-wrap:wrap}
+
+/* Forms ------------------------------------------------------- */
+.form{display:grid; gap:10px}
+.form .row{display:grid; grid-template-columns:180px 1fr; gap:10px; align-items:center}
+.form label{color:var(--muted)}
+.field{display:flex; flex-direction:column; gap:4px}
+input[type=text], input[type=number], input[type=date], input[type=month],
+input[type=url], select, textarea{
+  background:#0b1730; border:1px solid var(--line); border-radius:10px;
+  padding:9px 10px; color:var(--text); width:100%
+}
+input:focus, select:focus, textarea:focus{outline:2px solid var(--accent); border-color:var(--accent)}
+.calc-box{background:#08122a; border:1px dashed var(--line-2); border-radius:10px; padding:10px 12px;
+  font-family:ui-monospace,Menlo,Consolas,monospace; font-size:13px; color:#cfe0ff; white-space:pre-wrap}
+.help{color:var(--muted); font-size:12px}
+.err-msg{color:#fecaca; background:#3f1d1d; border:1px solid #7f1d1d;
+  padding:8px 10px; border-radius:10px; font-size:13px}
+.ok-msg{color:#bbf7d0; background:#052e1c; border:1px solid #166534;
+  padding:8px 10px; border-radius:10px; font-size:13px}
+
+/* Tables ------------------------------------------------------ */
+.table-wrap{overflow:auto; border:1px solid var(--line); border-radius:12px; background:#0a1428}
+table.data{border-collapse:separate; border-spacing:0; width:100%; font-size:13px; min-width:640px}
+table.data th, table.data td{padding:8px 10px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap}
+table.data thead th{position:sticky; top:0; background:#0e1a33; color:#cfe0ff; z-index:1; font-weight:700}
+table.data tbody tr:hover{background:#0b1a37}
+table.data td.num, table.data th.num{text-align:right; font-variant-numeric:tabular-nums}
+table.data td.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
+table.data tfoot td{background:#0e1a33; font-weight:700}
+tr.manual td:nth-child(2){color:#fde68a}
+tr.carry td:nth-child(2){color:#93c5fd}
+.status-pill{display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; border:1px solid var(--line)}
+.status-pill.manual{background:#3b2b06; border-color:#a16207; color:#fde68a}
+.status-pill.carry{background:#0b2545; border-color:#1d4ed8; color:#bfdbfe}
+
+/* Master list (three schemes side-by-side) */
+.master-grid{display:grid; grid-template-columns:repeat(3,minmax(260px,1fr)); gap:12px}
+.master-grid .col h4{margin:0 0 6px}
+.scheme-tag{display:inline-block; padding:2px 8px; border-radius:6px; font-size:11px; font-weight:700}
+.scheme-tag.aay{background:#0b2545;color:#dbeafe}
+.scheme-tag.phh{background:#0b2e1c;color:#dcfce7}
+.scheme-tag.sfss{background:#25123f;color:#f3e8ff}
+
+/* Register (7 months side-by-side) */
+.months-scroller{overflow:auto; border:1px solid var(--line); border-radius:12px; background:#0a1428}
+table.reg{border-collapse:collapse; font-size:12px}
+table.reg th, table.reg td{border:1px solid var(--line); padding:5px 7px; text-align:center; min-width:56px}
+table.reg thead th.month{background:#0e1a33; color:#cfe0ff; font-weight:800; font-size:12px}
+table.reg thead th.sub{background:#0c1731; color:#a9bde3; font-weight:600}
+table.reg td.day{background:#0b1a37; font-weight:700}
+table.reg td.num{text-align:right; font-variant-numeric:tabular-nums}
+table.reg td.gap{border:0; background:transparent; min-width:8px; padding:0}
+table.reg .totals td{background:#0e1a33; font-weight:800; color:#cfe0ff}
+
+/* Toolbar / filter row */
+.toolbar{display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px}
+.toolbar .grow{flex:1}
+
+/* Toast ------------------------------------------------------- */
+.toast-wrap{position:fixed; right:14px; bottom:76px; display:flex; flex-direction:column; gap:8px; z-index:9999}
+.toast{background:#0e1a33; border:1px solid var(--line-2); padding:10px 12px; border-radius:12px;
+  min-width:220px; max-width:340px; box-shadow:var(--shadow); font-size:13px}
+.toast.ok{border-color:#166534} .toast.warn{border-color:#a16207} .toast.err{border-color:#7f1d1d}
+
+/* Bottom nav (mobile) */
+.bottom-nav{display:none}
+@media (max-width: 900px){
+  .app{grid-template-columns:1fr}
+  .sidebar{position:fixed; left:0; top:0; height:100vh; width:78%; max-width:320px;
+    transform:translateX(-105%); transition:transform .18s ease; z-index:60}
+  .sidebar.open{transform:none}
+  .main{padding-bottom:96px}
+  .grid.k4{grid-template-columns:repeat(2,1fr)}
+  .grid.k3{grid-template-columns:1fr}
+  .grid.k2{grid-template-columns:1fr}
+  .master-grid{grid-template-columns:1fr}
+  .form .row{grid-template-columns:1fr}
+  .bottom-nav{display:flex; position:fixed; left:0; right:0; bottom:0; z-index:55;
+    background:#0b1730; border-top:1px solid var(--line); padding:6px 6px calc(6px + env(safe-area-inset-bottom))}
+  .bottom-nav a{flex:1; text-align:center; padding:8px 4px; color:var(--muted); font-size:11px; cursor:pointer}
+  .bottom-nav a.active{color:#fff}
+  .bottom-nav a .ic{font-size:18px; display:block}
+  .backdrop{position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:55; display:none}
+  .backdrop.on{display:block}
+  .menu-btn{display:inline-flex}
+}
+@media (min-width: 901px){ .menu-btn{display:none} }
+
+/* Print ------------------------------------------------------- */
+@media print{
+  :root{ --bg:#fff; --panel:#fff; --card:#fff; --text:#000; --muted:#333; --line:#000; --line-2:#000 }
+  html,body{background:#fff; color:#000}
+  .sidebar, .bottom-nav, .topbar, .toolbar, .no-print, .toast-wrap, .backdrop{display:none!important}
+  .app{grid-template-columns:1fr}
+  .main{padding:0}
+  .print-only{display:block!important}
+  table.print-reg{width:100%; border-collapse:collapse; font-size:11pt}
+  table.print-reg th, table.print-reg td{border:1px solid #000; padding:4px 6px}
+  table.print-reg th{background:#eee}
+  .print-header{text-align:center; margin-bottom:8px}
+  .print-header h2{margin:2px 0}
+  .print-meta{display:flex; justify-content:space-between; margin:6px 0 10px; font-size:11pt}
+  .card{box-shadow:none; border:1px solid #000}
+}
+.print-only{display:none}
+
+/* Utility ----------------------------------------------------- */
+.row-flex{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+.right{margin-left:auto}
+.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
+.pill{padding:2px 8px; border-radius:999px; font-size:11px; border:1px solid var(--line); color:var(--muted); background:#0b1730}
+hr.sep{border:0; border-top:1px solid var(--line); margin:12px 0}
+.center{text-align:center}
+.tiny{font-size:11px}
+</style>
+</head>
+<body>
+
+<div class="backdrop" id="backdrop"></div>
+
+<div class="app" id="app">
+  <!-- ===================== SIDEBAR ===================== -->
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <div class="logo">🍚</div>
+      <div>
+        <div class="name">FPS Rice Register</div>
+        <div class="sub">FPS Code 0201 P100</div>
+      </div>
+    </div>
+
+    <div class="reg-switch">
+      <button data-reg="NFSA" id="regBtn-NFSA" class="on nfsa">NFSA</button>
+      <button data-reg="CMAY" id="regBtn-CMAY">CMAY</button>
+    </div>
+
+    <nav class="nav" id="nav">
+      <div class="group">Operations</div>
+      <a data-page="dashboard"><span class="ic">🏠</span> Dashboard</a>
+      <a data-page="receive"><span class="ic">📦</span> Receive Stock</a>
+      <a data-page="sales"><span class="ic">🛒</span> Daily Sales</a>
+      <a data-page="ledger"><span class="ic">📋</span> Master Ledger</a>
+      <a data-page="print"><span class="ic">🖨️</span> Print Register</a>
+
+      <div class="group">Excel Reference Pages</div>
+      <a data-page="ref-dashboard"><span class="ic">📊</span> Dashboard (Ref)</a>
+      <a data-page="ref-master"><span class="ic">📚</span> Master List</a>
+      <a data-page="ref-aay"><span class="ic">🔵</span> AAY Register</a>
+      <a data-page="ref-phh"><span class="ic">🟢</span> PHH Register</a>
+      <a data-page="ref-sfss"><span class="ic">🟣</span> SFSS Register</a>
+      <a data-page="ref-received"><span class="ic">📥</span> All Received Amount</a>
+      <a data-page="ref-print-aay"><span class="ic">🖨️</span> AAY Print</a>
+      <a data-page="ref-print-phh"><span class="ic">🖨️</span> PHH Print</a>
+      <a data-page="ref-print-sfss"><span class="ic">🖨️</span> SFSS Print</a>
+
+      <div class="group">System</div>
+      <a data-page="sync"><span class="ic">🔁</span> Sync Queue</a>
+      <a data-page="backup"><span class="ic">💾</span> Backup / Restore</a>
+      <a data-page="settings"><span class="ic">⚙️</span> Settings</a>
+    </nav>
+  </aside>
+
+  <!-- ===================== MAIN ===================== -->
+  <main class="main">
+    <!-- Top bar -->
+    <div class="topbar">
+      <div class="title">
+        <button class="btn sm ghost menu-btn" id="menuBtn" aria-label="Menu">☰</button>
+        <h1 id="pageTitle">Dashboard</h1>
+        <span class="badge" id="regBadge">NFSA</span>
+      </div>
+      <div class="row-flex">
+        <div class="scheme-chips" id="schemeChips">
+          <button class="chip aay on" data-scheme="AAY"><span class="dot"></span>AAY</button>
+          <button class="chip phh" data-scheme="PHH"><span class="dot"></span>PHH</button>
+          <button class="chip sfss" data-scheme="SFSS"><span class="dot"></span>SFSS</button>
+        </div>
+        <span class="badge" id="syncBadge">🔴 Offline</span>
+        <button class="btn sm" id="syncNowBtn" title="Sync Now">↻ Sync</button>
+      </div>
+    </div>
+
+    <!-- Page container -->
+    <div id="pageRoot"></div>
+  </main>
+</div>
+
+<!-- Bottom nav (mobile) -->
+<nav class="bottom-nav" id="bottomNav">
+  <a data-page="dashboard" class="active"><span class="ic">🏠</span>Home</a>
+  <a data-page="receive"><span class="ic">📦</span>Receive</a>
+  <a data-page="sales"><span class="ic">🛒</span>Sales</a>
+  <a data-page="ledger"><span class="ic">📋</span>Ledger</a>
+  <a data-page="print"><span class="ic">🖨️</span>Print</a>
+</nav>
+
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script>
+/* ================================================================
+   FPS Rice Register — application script
+   Vanilla JS, IndexedDB, offline-first, Google Apps Script sync.
+   ================================================================ */
+
+(function(){
+'use strict';
+
+/* ---------------- Constants & config ---------------- */
+const REGISTERS = ['NFSA','CMAY'];
+const SCHEMES   = ['AAY','PHH','SFSS'];
+const MONTHS = [
+  {key:'2026-09', label:'September 2026', y:2026, m:9},
+  {key:'2026-10', label:'October 2026',   y:2026, m:10},
+  {key:'2026-11', label:'November 2026',  y:2026, m:11},
+  {key:'2026-12', label:'December 2026',  y:2026, m:12},
+  {key:'2027-01', label:'January 2027',   y:2027, m:1},
+  {key:'2027-02', label:'February 2027',  y:2027, m:2},
+  {key:'2027-03', label:'March 2027',     y:2027, m:3},
+];
+const FPS_CODE = '0201 P100';
+const DB_NAME  = 'fps-rice-db';
+const DB_VER   = 1;
+
+/* ---------------- Utilities ---------------- */
+const $ = (sel, root=document) => root.querySelector(sel);
+const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
+const pad2 = (n) => String(n).padStart(2,'0');
+const isoDate = (d) => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
+const daysInMonth = (y,m) => new Date(y, m, 0).getDate();
+const monthKey = (dateStr) => dateStr.slice(0,7);
+const num = (v) => {
+  if (v === '' || v === null || v === undefined) return 0;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
+const fmt = (n) => (Math.round(n * 100)/100).toLocaleString('en-IN');
+const uid = () => 'r-' + Math.random().toString(36).slice(2,10) + Date.now().toString(36);
+
+function toast(msg, kind='ok', ms=2200){
+  const el = document.createElement('div');
+  el.className = 'toast ' + kind;
+  el.textContent = msg;
+  $('#toastWrap').appendChild(el);
+  setTimeout(()=>{ el.style.opacity='0'; el.style.transition='opacity .25s'; }, ms-250);
+  setTimeout(()=>el.remove(), ms);
+}
+
+/* ---------------- IndexedDB layer ---------------- */
+let _db = null;
+function openDB(){
+  if (_db) return Promise.resolve(_db);
+  return new Promise((resolve, reject)=>{
+    const req = indexedDB.open(DB_NAME, DB_VER);
+    req.onupgradeneeded = (e)=>{
+      const db = req.result;
+      if (!db.objectStoreNames.contains('entries')){
+        const s = db.createObjectStore('entries', {keyPath:'id'});
+        s.createIndex('by_key', 'key', {unique:true});     // register|scheme|date
+        s.createIndex('by_rsm', ['register','scheme','month']);
+        s.createIndex('by_rs',  ['register','scheme']);
+      }
+      if (!db.objectStoreNames.contains('syncQueue')){
+        db.createObjectStore('syncQueue', {keyPath:'qid', autoIncrement:true});
+      }
+      if (!db.objectStoreNames.contains('settings')){
+        db.createObjectStore('settings', {keyPath:'k'});
+      }
+    };
+    req.onsuccess = ()=>{ _db = req.result; resolve(_db); };
+    req.onerror  = ()=> reject(req.error);
+  });
+}
+function tx(store, mode='readonly'){
+  return openDB().then(db => db.transaction(store, mode).objectStore(store));
+}
+function idbAll(store, indexName=null, range=null){
+  return openDB().then(db => new Promise((resolve, reject)=>{
+    const t = db.transaction(store,'readonly');
+    const s = t.objectStore(store);
+    const src = indexName ? s.index(indexName) : s;
+    const req = range ? src.getAll(range) : src.getAll();
+    req.onsuccess = ()=> resolve(req.result || []);
+    req.onerror  = ()=> reject(req.error);
+  }));
+}
+function idbPut(store, obj){
+  return openDB().then(db => new Promise((resolve, reject)=>{
+    const t = db.transaction(store,'readwrite');
+    t.objectStore(store).put(obj);
+    t.oncomplete = ()=> resolve(obj);
+    t.onerror = ()=> reject(t.error);
+  }));
+}
+function idbDelete(store, key){
+  return openDB().then(db => new Promise((resolve, reject)=>{
+    const t = db.transaction(store,'readwrite');
+    t.objectStore(store).delete(key);
+    t.oncomplete = ()=> resolve();
+    t.onerror = ()=> reject(t.error);
+  }));
+}
+function idbGet(store, key){
+  return openDB().then(db => new Promise((resolve, reject)=>{
+    const t = db.transaction(store,'readonly');
+    const req = t.objectStore(store).get(key);
+    req.onsuccess = ()=> resolve(req.result || null);
+    req.onerror = ()=> reject(req.error);
+  }));
+}
+function idbClear(store){
+  return openDB().then(db => new Promise((resolve, reject)=>{
+    const t = db.transaction(store,'readwrite');
+    t.objectStore(store).clear();
+    t.oncomplete = ()=> resolve();
+    t.onerror = ()=> reject(t.error);
+  }));
+}
+function getSetting(k, def=null){
+  return idbGet('settings', k).then(r => r ? r.v : def);
+}
+function setSetting(k, v){
+  return idbPut('settings', {k, v});
+}
+
+/* ---------------- Data model helpers ----------------
+   entry = {
+     id, key (register|scheme|date),
+     register, scheme, date (YYYY-MM-DD), month (YYYY-MM),
+     openingMode ('manual' | 'carry'),
+     opening (nullable if carry),
+     received, sold, remarks,
+     createdAt, updatedAt, deviceId, syncStatus ('pending'|'synced')
+   }
+   Calculated fields (opening resolved / total / closing) are computed
+   on read via calcSeries() so recomputation cascades automatically.
+------------------------------------------------------- */
+const DEVICE_ID = (function(){
+  let d = localStorage.getItem('fps-device-id');
+  if (!d){ d = 'dev-' + Math.random().toString(36).slice(2,10); localStorage.setItem('fps-device-id', d); }
+  return d;
+})();
+
+function makeKey(register, scheme, date){ return `${register}|${scheme}|${date}`; }
+
+async function getEntriesFor(register, scheme){
+  const all = await idbAll('entries', 'by_rs', IDBKeyRange.only([register, scheme]));
+  return all.sort((a,b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+}
+async function getEntry(register, scheme, date){
+  const key = makeKey(register, scheme, date);
+  const all = await idbAll('entries', 'by_key', IDBKeyRange.only(key));
+  return all[0] || null;
+}
+
+/**
+ * Compute the resolved daily series (opening/total/closing) with carry-forward.
+ * Returns array of {date, opening, openingMode, received, total, sold, closing, remarks, entry?}
+ * over the full [Sep 1, 2026 .. Mar 31, 2027] period.
+ */
+function calcSeries(entries){
+  // Map by date for lookup
+  const byDate = new Map(entries.map(e => [e.date, e]));
+  const series = [];
+  let prevClosing = 0;
+  for (const m of MONTHS){
+    const dim = daysInMonth(m.y, m.m);
+    for (let d=1; d<=dim; d++){
+      const dateStr = `${m.y}-${pad2(m.m)}-${pad2(d)}`;
+      const e = byDate.get(dateStr);
+      let opening, openingMode;
+      if (e && e.openingMode === 'manual' && e.opening != null){
+        opening = num(e.opening); openingMode = 'manual';
+      } else {
+        opening = prevClosing; openingMode = 'carry';
+      }
+      const received = e ? num(e.received) : 0;
+      const sold     = e ? num(e.sold)     : 0;
+      const total    = opening + received;
+      const closing  = total - sold;
+      series.push({
+        date: dateStr, month: m.key, monthLabel: m.label, day: d,
+        opening, openingMode, received, total, sold, closing,
+        remarks: e ? (e.remarks || '') : '',
+        entry: e || null
+      });
+      prevClosing = closing;
+    }
+  }
+  return series;
+}
+
+/* Filter helpers */
+function filterMonth(series, monthKey){
+  if (!monthKey) return series;
+  return series.filter(r => r.month === monthKey);
+}
+function sumOver(series, field){
+  return series.reduce((a,b)=>a + num(b[field]), 0);
+}
+
+/* =============================================================
+   Sync engine (Google Apps Script) — offline-first with retry
+   -------------------------------------------------------------
+   Each queue item:
+   {
+     qid,                // autoIncrement primary key
+     op:      'upsert',
+     entry:   { ...record },
+     at:      firstQueuedTimestamp,
+     attempts,           // number of tries so far
+     nextRetryAt,        // ms epoch — item is skipped until this time
+     lastError,          // string
+     lastTriedAt         // ms epoch
+   }
+   The sync runs are batched (SYNC_BATCH_SIZE per POST) and are
+   idempotent server-side (upsert keyed by register|scheme|date),
+   so a re-sent row simply overwrites its own row.
+   ============================================================= */
+const SYNC_BATCH_SIZE   = 50;
+const SYNC_MIN_BACKOFF  = 15_000;      // 15s minimum backoff
+const SYNC_MAX_BACKOFF  = 15 * 60_000; // 15 min cap
+const SYNC_PERIODIC_MS  = 60_000;      // background retry every minute
+let _syncing = false;
+let _syncTimer = null;
+
+/** Add / merge a record into the sync queue.
+ *  If a queue item for the same entry.id already exists, replace it in place
+ *  (so rapid edits don't fan out into many queue rows). */
+async function enqueueSync(entry){
+  const existing = await idbAll('syncQueue');
+  const dup = existing.find(q => q.entry && q.entry.id === entry.id);
+  const item = {
+    op: 'upsert',
+    entry,
+    at: dup ? dup.at : Date.now(),
+    attempts: 0,
+    nextRetryAt: 0,
+    lastError: '',
+    lastTriedAt: 0
+  };
+  if (dup){ item.qid = dup.qid; item.at = dup.at; }
+  await idbPut('syncQueue', item);
+  updateSyncBadge();
+  // Ask browser to run Background Sync when it next has connectivity.
+  requestBackgroundSync();
+  if (navigator.onLine) trySync();
+}
+
+/** Compute exponential backoff with jitter. */
+function backoffMs(attempts){
+  const base = Math.min(SYNC_MAX_BACKOFF, SYNC_MIN_BACKOFF * Math.pow(2, Math.max(0, attempts-1)));
+  const jitter = Math.floor(Math.random() * 3000);
+  return base + jitter;
+}
+
+/** Attempt to drain the sync queue. Returns {sent, failed, skipped}. */
+async function trySync(opts={}){
+  const url = await getSetting('gasUrl', '');
+  if (!url) return {sent:0, failed:0, skipped:0, reason:'no-url'};
+  if (!navigator.onLine) return {sent:0, failed:0, skipped:0, reason:'offline'};
+  if (_syncing) return {sent:0, failed:0, skipped:0, reason:'already-running'};
+
+  _syncing = true;
+  let sent=0, failed=0, skipped=0;
+  try {
+    const all = await idbAll('syncQueue');
+    if (!all.length) return {sent, failed, skipped};
+
+    const now = Date.now();
+    // Respect per-item backoff unless the caller forces it.
+    const eligible = opts.force
+      ? all.slice()
+      : all.filter(q => !q.nextRetryAt || q.nextRetryAt <= now);
+    skipped = all.length - eligible.length;
+    if (!eligible.length) return {sent, failed, skipped};
+
+    // Send in stable order (oldest first), batched.
+    eligible.sort((a,b) => (a.at||0) - (b.at||0));
+
+    for (let i=0; i<eligible.length; i += SYNC_BATCH_SIZE){
+      const batch = eligible.slice(i, i + SYNC_BATCH_SIZE);
+      const rows = batch.map(q => q.entry);
+      let ok = false, errMsg = '';
+      try {
+        const res = await fetch(url, {
+          method:'POST',
+          // text/plain avoids a CORS preflight against Apps Script.
+          headers:{'Content-Type':'text/plain;charset=utf-8'},
+          body: JSON.stringify({action:'upsert', rows, deviceId: DEVICE_ID})
+        });
+        if (!res.ok) throw new Error('HTTP '+res.status);
+        const text = await res.text();
+        // Apps Script may return JSON; parse best-effort.
+        try {
+          const j = JSON.parse(text);
+          if (j && j.ok === false) throw new Error(j.err || 'server rejected');
+        } catch(_){/* non-JSON is fine */}
+        ok = true;
+      } catch (err){
+        errMsg = err && err.message || String(err);
+      }
+
+      if (ok){
+        // Remove batch from queue, mark entries as synced.
+        for (const q of batch) await idbDelete('syncQueue', q.qid);
+        for (const r of rows){
+          const cur = await idbGet('entries', r.id);
+          if (cur){
+            cur.syncStatus = 'synced';
+            cur.lastSyncedAt = new Date().toISOString();
+            await idbPut('entries', cur);
+          }
+        }
+        sent += rows.length;
+      } else {
+        // Keep batch, bump attempts + backoff on each item.
+        for (const q of batch){
+          const attempts = (q.attempts || 0) + 1;
+          const delay    = backoffMs(attempts);
+          await idbPut('syncQueue', {
+            ...q,
+            attempts,
+            lastTriedAt: Date.now(),
+            nextRetryAt: Date.now() + delay,
+            lastError: errMsg.slice(0, 240)
+          });
+        }
+        failed += batch.length;
+        // Stop trying further batches this run — likely the same failure repeats.
+        break;
+      }
+    }
+
+    if (sent && !failed)  toast(`Synced ${sent} record(s) to Google Sheets`,'ok');
+    if (sent && failed)   toast(`Synced ${sent}, ${failed} will retry`,'warn');
+    if (!sent && failed)  toast(`Sync failed for ${failed} — will retry`,'warn');
+  } finally {
+    _syncing = false;
+    updateSyncBadge();
+    scheduleNextSyncTick();
+  }
+  return {sent, failed, skipped};
+}
+
+/** Register a periodic in-page tick so the queue drains even without
+ *  online/visibility events (e.g. flaky mobile networks). */
+function scheduleNextSyncTick(){
+  if (_syncTimer) clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(async ()=>{
+    const q = await idbAll('syncQueue');
+    if (q.length && navigator.onLine) trySync();
+    else scheduleNextSyncTick();
+  }, SYNC_PERIODIC_MS);
+}
+
+/** Ask the browser to fire a background sync when connectivity is available.
+ *  Silently no-ops on browsers without SyncManager (iOS Safari). */
+async function requestBackgroundSync(){
+  try {
+    if ('serviceWorker' in navigator && 'SyncManager' in window){
+      const reg = await navigator.serviceWorker.ready;
+      await reg.sync.register('fps-rice-sync');
+    }
+  } catch (_){ /* not supported — periodic timer + online event still cover us */ }
+}
+
+async function pingBackend(){
+  const url = await getSetting('gasUrl', '');
+  if (!url){ toast('Set the Apps Script URL first','warn'); return false; }
+  try {
+    const r = await fetch(url + (url.includes('?')?'&':'?') + 'action=ping', {method:'GET'});
+    if (!r.ok) throw new Error('HTTP '+r.status);
+    const t = await r.text();
+    toast('Backend OK: ' + t.slice(0,60),'ok');
+    return true;
+  } catch (err){
+    toast('Backend unreachable: ' + err.message,'err', 3500);
+    return false;
+  }
+}
+
+/** Refresh the sync badge in the top bar. */
+async function updateSyncBadge(){
+  const badge = $('#syncBadge');
+  if (!badge) return;
+  const queue = await idbAll('syncQueue');
+  const url = await getSetting('gasUrl', '');
+  const nowMs = Date.now();
+  const waiting = queue.filter(q => q.nextRetryAt && q.nextRetryAt > nowMs);
+  const oldest = queue.reduce((m,q) => (!m || q.at < m.at) ? q : m, null);
+  let tip = '';
+  if (oldest){
+    const age = Math.round((nowMs - oldest.at)/1000);
+    tip = `Oldest pending: ${new Date(oldest.at).toLocaleString()} (${age}s ago)`;
+    if (oldest.lastError) tip += `\nLast error: ${oldest.lastError}`;
+  }
+  if (!navigator.onLine){
+    badge.className = 'badge off';
+    badge.textContent = queue.length ? `🔴 Offline • ${queue.length} pending` : '🔴 Offline • Local Only';
+  } else if (!url){
+    badge.className = 'badge pend';
+    badge.textContent = '⚙️ Sync not configured';
+  } else if (_syncing){
+    badge.className = 'badge pend';
+    badge.textContent = `🔄 Syncing ${queue.length}…`;
+  } else if (queue.length){
+    badge.className = 'badge pend';
+    const label = waiting.length === queue.length ? 'retrying' : 'pending';
+    badge.textContent = `🟠 Online • ${queue.length} ${label}`;
+  } else {
+    badge.className = 'badge on';
+    badge.textContent = '🟢 Online • Synced';
+  }
+  badge.title = tip;
+}
+
+/* ---------------- Save / edit entries ---------------- */
+async function saveEntry({register, scheme, date, opening, openingMode, received, sold, remarks}){
+  if (!register || !scheme || !date) throw new Error('Missing register/scheme/date');
+  received = num(received); sold = num(sold);
+  if (received < 0) throw new Error('Received cannot be negative');
+  if (sold < 0)     throw new Error('Sold cannot be negative');
+  if (openingMode === 'manual'){
+    opening = num(opening);
+    if (opening < 0) throw new Error('Opening cannot be negative');
+  } else {
+    opening = null;
+  }
+  const key = makeKey(register, scheme, date);
+  const now = new Date().toISOString();
+  const existing = await getEntry(register, scheme, date);
+  const rec = {
+    id: existing ? existing.id : uid(),
+    key, register, scheme, date, month: monthKey(date),
+    opening, openingMode, received, sold,
+    remarks: (remarks || '').toString().slice(0,300),
+    createdAt: existing ? existing.createdAt : now,
+    updatedAt: now,
+    deviceId: DEVICE_ID,
+    syncStatus: 'pending'
+  };
+  await idbPut('entries', rec);
+  await enqueueSync(rec);
+  return rec;
+}
+async function deleteEntry(register, scheme, date){
+  const e = await getEntry(register, scheme, date);
+  if (!e) return;
+  await idbDelete('entries', e.id);
+  await enqueueSync({...e, _deleted:true});
+}
+
+/* ---------------- App state ---------------- */
+const state = {
+  register: 'NFSA',
+  scheme: 'AAY',
+  page: 'dashboard',
+  monthKey: MONTHS[0].key,
+};
+
+/* ---------------- Router / navigation ---------------- */
+const PAGES = {
+  'dashboard'       : {title:'Dashboard',                render: renderDashboard},
+  'receive'         : {title:'Enter Stock Receipt',      render: renderReceive},
+  'sales'           : {title:'Record Daily Sale',        render: renderSales},
+  'ledger'          : {title:'Master Ledger',            render: renderLedger},
+  'print'           : {title:'Print Register',           render: renderPrint},
+  'ref-dashboard'   : {title:'Reference — Dashboard',    render: renderRefDashboard},
+  'ref-master'      : {title:'Reference — Master List',  render: renderRefMaster},
+  'ref-aay'         : {title:'Reference — AAY Register', render: () => renderRefScheme('AAY')},
+  'ref-phh'         : {title:'Reference — PHH Register', render: () => renderRefScheme('PHH')},
+  'ref-sfss'        : {title:'Reference — SFSS Register',render: () => renderRefScheme('SFSS')},
+  'ref-received'    : {title:'Reference — All Received Amount', render: renderRefReceived},
+  'ref-print-aay'   : {title:'Reference — AAY Print',    render: () => renderRefPrint('AAY')},
+  'ref-print-phh'   : {title:'Reference — PHH Print',    render: () => renderRefPrint('PHH')},
+  'ref-print-sfss'  : {title:'Reference — SFSS Print',   render: () => renderRefPrint('SFSS')},
+  'sync'            : {title:'Sync Queue',               render: renderSyncQueue},
+  'backup'          : {title:'Backup / Restore',         render: renderBackup},
+  'settings'        : {title:'Settings',                 render: renderSettings},
+};
+
+async function go(page){
+  if (!PAGES[page]) page = 'dashboard';
+  state.page = page;
+  // Highlight nav
+  $$('#nav a').forEach(a => a.classList.toggle('active', a.dataset.page === page));
+  $$('#bottomNav a').forEach(a => a.classList.toggle('active', a.dataset.page === page));
+  $('#pageTitle').textContent = PAGES[page].title;
+  $('#pageRoot').innerHTML = '<div class="card">Loading…</div>';
+  try {
+    await PAGES[page].render($('#pageRoot'));
+  } catch (err){
+    console.error(err);
+    $('#pageRoot').innerHTML = `<div class="card err-msg">Error: ${err.message}</div>`;
+  }
+  // Close mobile sidebar
+  $('#sidebar').classList.remove('open');
+  $('#backdrop').classList.remove('on');
+}
+
+function setRegister(reg){
+  if (!REGISTERS.includes(reg)) return;
+  state.register = reg;
+  $('#regBtn-NFSA').classList.toggle('on', reg==='NFSA');
+  $('#regBtn-NFSA').classList.toggle('nfsa', reg==='NFSA');
+  $('#regBtn-CMAY').classList.toggle('on', reg==='CMAY');
+  $('#regBtn-CMAY').classList.toggle('cmay', reg==='CMAY');
+  const badge = $('#regBadge');
+  badge.className = 'badge ' + (reg==='NFSA'?'nfsa':'cmay');
+  badge.textContent = reg + ' RICE REGISTER';
+  localStorage.setItem('fps-register', reg);
+  go(state.page);
+}
+function setScheme(s){
+  if (!SCHEMES.includes(s)) return;
+  state.scheme = s;
+  $$('#schemeChips .chip').forEach(c => c.classList.toggle('on', c.dataset.scheme===s));
+  localStorage.setItem('fps-scheme', s);
+  go(state.page);
+}
+
+/* ================================================================
+   PAGES
+   ================================================================ */
+
+/* ---- Dashboard (POS-style) ---- */
+async function renderDashboard(root){
+  const entries = await getEntriesFor(state.register, state.scheme);
+  const series  = calcSeries(entries);
+  const today = isoDate(new Date());
+  const todayRow = series.find(r => r.date === today);
+  const totRecv = sumOver(series, 'received');
+  const totSold = sumOver(series, 'sold');
+  const currentClosing = series.length ? series[series.length-1].closing : 0;
+  const pending = currentClosing;
+
+  // "Today" is only meaningful inside the accounting period. Fall back to last non-zero day.
+  let todayLbl = today, tOpen=0, tRecv=0, tSold=0, tClose=currentClosing;
+  if (todayRow){
+    tOpen = todayRow.opening; tRecv = todayRow.received; tSold = todayRow.sold; tClose = todayRow.closing;
+  } else {
+    todayLbl = series[series.length-1]?.date || today;
+    const lr = series[series.length-1];
+    if (lr){ tOpen=lr.opening; tRecv=lr.received; tSold=lr.sold; tClose=lr.closing; }
+  }
+
+  root.innerHTML = `
+    <div class="card">
+      <div class="row-flex">
+        <div>
+          <h2>${state.register} RICE REGISTER — POS</h2>
+          <div class="help">Accounting period: September 2026 → March 2027 · Scheme: <strong>${state.scheme}</strong></div>
+        </div>
+        <div class="right actions">
+          <button class="btn primary" data-nav="receive">➕ Enter Stock Receipt</button>
+          <button class="btn ok" data-nav="sales">🛒 Record Daily Sale</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid k4" style="margin-top:12px">
+      <div class="card kpi blue"><div class="lbl">Total Received</div><div class="val">${fmt(totRecv)} <small>kg</small></div><div class="sub">Sep 2026 – Mar 2027</div></div>
+      <div class="card kpi green"><div class="lbl">Total Sold</div><div class="val">${fmt(totSold)} <small>kg</small></div><div class="sub">All months</div></div>
+      <div class="card kpi violet"><div class="lbl">Pending Stock</div><div class="val">${fmt(pending)} <small>kg</small></div><div class="sub">Current closing balance</div></div>
+      <div class="card kpi orange"><div class="lbl">Distribution %</div><div class="val small">${totRecv>0 ? fmt(totSold/totRecv*100) : '0'}%</div><div class="sub">Sold ÷ Received</div></div>
+    </div>
+
+    <div class="grid k2" style="margin-top:12px">
+      <div class="card">
+        <h3>Today's Stock Summary <span class="pill">${todayLbl}</span></h3>
+        <div class="calc-box">Opening Balance   : ${fmt(tOpen)} kg
+Received Today    : + ${fmt(tRecv)} kg
+Sold Today        : - ${fmt(tSold)} kg
+-----------------------------------
+Current Closing   : ${fmt(tClose)} kg</div>
+        <div class="actions" style="margin-top:10px">
+          <button class="btn" data-nav="ledger">📋 View Master Ledger</button>
+          <button class="btn" data-nav="print">🖨️ Print Month Register</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Scheme Snapshot — ${state.register}</h3>
+        <div class="table-wrap" style="max-height:280px">
+          <table class="data">
+            <thead><tr><th>Scheme</th><th class="num">Received</th><th class="num">Sold</th><th class="num">Pending</th></tr></thead>
+            <tbody id="schemeSnap"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <h3>Monthly Stock Breakdown (Receive − Sold = Pending)</h3>
+      <div class="table-wrap">
+        <table class="data">
+          <thead>
+            <tr>
+              <th>Month</th>
+              <th class="num">Opening</th>
+              <th class="num">Received</th>
+              <th class="num">Total</th>
+              <th class="num">Sold</th>
+              <th class="num">Closing</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="monthlyTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  // Scheme snapshot
+  const snap = [];
+  for (const s of SCHEMES){
+    const es = await getEntriesFor(state.register, s);
+    const ss = calcSeries(es);
+    snap.push({
+      scheme:s,
+      recv: sumOver(ss,'received'),
+      sold: sumOver(ss,'sold'),
+      pend: ss.length ? ss[ss.length-1].closing : 0
+    });
+  }
+  $('#schemeSnap').innerHTML = snap.map(r =>
+    `<tr><td><span class="scheme-tag ${r.scheme.toLowerCase()}">${r.scheme}</span></td>
+     <td class="num">${fmt(r.recv)}</td><td class="num">${fmt(r.sold)}</td><td class="num">${fmt(r.pend)}</td></tr>`
+  ).join('');
+
+  // Monthly breakdown
+  const rowsHtml = [];
+  for (const m of MONTHS){
+    const rows = filterMonth(series, m.key);
+    const open  = rows.length ? rows[0].opening : 0;
+    const recv  = sumOver(rows,'received');
+    const sold  = sumOver(rows,'sold');
+    const close = rows.length ? rows[rows.length-1].closing : 0;
+    const tot   = open + recv;
+    const status = recv===0 && sold===0 ? '<span class="pill">No activity</span>' :
+                   close < 0 ? '<span class="pill" style="color:#fecaca;border-color:#7f1d1d;background:#3f1d1d">Negative!</span>' :
+                   '<span class="pill" style="color:#bbf7d0;border-color:#166534;background:#052e1c">OK</span>';
+    rowsHtml.push(`<tr><td>${m.label}</td>
+      <td class="num">${fmt(open)}</td>
+      <td class="num">${fmt(recv)}</td>
+      <td class="num">${fmt(tot)}</td>
+      <td class="num">${fmt(sold)}</td>
+      <td class="num">${fmt(close)}</td>
+      <td>${status}</td></tr>`);
+  }
+  const grOpen  = MONTHS.length ? filterMonth(series, MONTHS[0].key)[0].opening : 0;
+  rowsHtml.push(`<tr class="totals">
+    <td><strong>GRAND TOTAL</strong></td>
+    <td class="num">${fmt(grOpen)}</td>
+    <td class="num">${fmt(totRecv)}</td>
+    <td class="num">${fmt(grOpen + totRecv)}</td>
+    <td class="num">${fmt(totSold)}</td>
+    <td class="num">${fmt(currentClosing)}</td>
+    <td></td></tr>`);
+  $('#monthlyTbody').innerHTML = rowsHtml.join('');
+
+  // Wire quick-action buttons
+  $$('[data-nav]', root).forEach(b => b.addEventListener('click', ()=> go(b.dataset.nav)));
+}
+
+/* ---- Receive Stock ---- */
+async function renderReceive(root){
+  const today = isoDate(new Date());
+  const defaultDate = today >= '2026-09-01' && today <= '2027-03-31' ? today : '2026-09-01';
+
+  root.innerHTML = `
+    <div class="card">
+      <div class="row-flex">
+        <h2>Enter Stock Receipt</h2>
+        <span class="badge ${state.register==='NFSA'?'nfsa':'cmay'}">${state.register}</span>
+        <span class="scheme-tag ${state.scheme.toLowerCase()}">${state.scheme}</span>
+      </div>
+      <div class="help">Register: <strong>${state.register}</strong> · Scheme: <strong>${state.scheme}</strong>. Leave Opening blank to auto-carry from previous closing.</div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <div class="form">
+        <div class="row"><label>Date of Receipt</label>
+          <input type="date" id="rcvDate" min="2026-09-01" max="2027-03-31" value="${defaultDate}" /></div>
+        <div class="row"><label>Opening Stock (kg)</label>
+          <div class="field">
+            <input type="number" id="rcvOpening" step="0.01" min="0" placeholder="Blank = auto-carry" />
+            <div class="help" id="rcvOpenHint">—</div>
+          </div>
+        </div>
+        <div class="row"><label>Received (kg)</label>
+          <input type="number" id="rcvReceived" step="0.01" min="0" value="0" /></div>
+        <div class="row"><label>Remarks</label>
+          <input type="text" id="rcvRemarks" placeholder="Optional (e.g. Truck no / LOT / source)" /></div>
+        <div class="row"><label>Calculation</label>
+          <div class="calc-box" id="rcvCalc">Opening   : 0
+Received  : + 0
+--------------------
+Total     : 0</div></div>
+        <div class="row"><label></label>
+          <div class="actions">
+            <button class="btn ok" id="rcvSave">💾 Save Receipt</button>
+            <button class="btn" id="rcvView">📋 Open in Ledger</button>
+          </div>
+        </div>
+        <div id="rcvMsg"></div>
+      </div>
+    </div>
+  `;
+
+  const dateEl = $('#rcvDate'), openEl = $('#rcvOpening'), recvEl = $('#rcvReceived');
+  const hint = $('#rcvOpenHint'), calc = $('#rcvCalc');
+
+  async function refresh(){
+    const date = dateEl.value;
+    if (!date){ hint.textContent = 'Pick a date.'; return; }
+    const entries = await getEntriesFor(state.register, state.scheme);
+    const series  = calcSeries(entries);
+    const row = series.find(r => r.date === date);
+    const existing = await getEntry(state.register, state.scheme, date);
+    let openVal;
+    if (openEl.value !== ''){
+      openVal = num(openEl.value);
+      hint.textContent = 'Manual opening entered (will override carry-forward).';
+    } else if (existing && existing.openingMode === 'manual'){
+      openEl.value = existing.opening;
+      openVal = num(existing.opening);
+      hint.textContent = 'Loaded saved manual opening for this date.';
+    } else {
+      openVal = row ? row.opening : 0;
+      hint.textContent = `Auto-carry from previous day closing: ${fmt(openVal)} kg`;
+    }
+    if (existing && recvEl.value === '0' && !document.activeElement.isSameNode(recvEl)){
+      recvEl.value = existing.received;
+      if (existing.remarks) $('#rcvRemarks').value = existing.remarks;
+    }
+    const r = num(recvEl.value);
+    calc.textContent =
+`Opening   : ${fmt(openVal)}
+Received  : + ${fmt(r)}
+--------------------
+Total     : ${fmt(openVal + r)}`;
+  }
+  dateEl.addEventListener('change', refresh);
+  openEl.addEventListener('input', refresh);
+  recvEl.addEventListener('input', refresh);
+  await refresh();
+
+  $('#rcvSave').addEventListener('click', async ()=>{
+    try {
+      const date = dateEl.value;
+      const openingMode = openEl.value === '' ? 'carry' : 'manual';
+      const opening = openingMode === 'manual' ? num(openEl.value) : null;
+      const received = num(recvEl.value);
+      // Preserve existing sold on save
+      const existing = await getEntry(state.register, state.scheme, date);
+      const sold = existing ? num(existing.sold) : 0;
+      await saveEntry({
+        register: state.register, scheme: state.scheme, date,
+        opening, openingMode, received, sold,
+        remarks: $('#rcvRemarks').value
+      });
+      $('#rcvMsg').innerHTML = `<div class="ok-msg">Saved. ${navigator.onLine ? '' : ' (offline — will sync when online)'}</div>`;
+      toast('Receipt saved','ok');
+      await refresh();
+    } catch (err){
+      $('#rcvMsg').innerHTML = `<div class="err-msg">${err.message}</div>`;
+    }
+  });
+  $('#rcvView').addEventListener('click', ()=> go('ledger'));
+}
+
+/* ---- Daily Sales ---- */
+async function renderSales(root){
+  const today = isoDate(new Date());
+  const defaultDate = today >= '2026-09-01' && today <= '2027-03-31' ? today : '2026-09-01';
+
+  root.innerHTML = `
+    <div class="card">
+      <div class="row-flex">
+        <h2>Record Daily Sale</h2>
+        <span class="badge ${state.register==='NFSA'?'nfsa':'cmay'}">${state.register}</span>
+        <span class="scheme-tag ${state.scheme.toLowerCase()}">${state.scheme}</span>
+      </div>
+      <div class="help">Closing = Opening + Received − Sold. Sold cannot exceed Total unless override is enabled.</div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <div class="form">
+        <div class="row"><label>Date of Sale</label>
+          <input type="date" id="slDate" min="2026-09-01" max="2027-03-31" value="${defaultDate}" /></div>
+        <div class="row"><label>Opening (kg)</label>
+          <div class="field">
+            <input type="number" id="slOpening" step="0.01" min="0" placeholder="Blank = auto-carry" />
+            <div class="help" id="slOpenHint">—</div>
+          </div>
+        </div>
+        <div class="row"><label>Received (kg)</label>
+          <input type="number" id="slReceived" step="0.01" min="0" value="0" /></div>
+        <div class="row"><label>Sold (kg)</label>
+          <input type="number" id="slSold" step="0.01" min="0" value="0" /></div>
+        <div class="row"><label>No. of Cards</label>
+          <input type="number" id="slCards" step="1" min="0" value="0" placeholder="Optional"/></div>
+        <div class="row"><label>Remarks</label>
+          <input type="text" id="slRemarks" placeholder="Optional" /></div>
+        <div class="row"><label>Calculation</label>
+          <div class="calc-box" id="slCalc">Opening   : 0
+Received  : + 0
+Total     : 0
+Sold      : - 0
+--------------------
+Closing   : 0</div></div>
+        <div class="row"><label></label>
+          <div class="row-flex">
+            <label class="row-flex" style="gap:6px"><input type="checkbox" id="slOverride"> Allow negative closing (override)</label>
+          </div>
+        </div>
+        <div class="row"><label></label>
+          <div class="actions">
+            <button class="btn ok" id="slSave">💾 Save Sale</button>
+            <button class="btn err" id="slDelete">🗑 Delete this day</button>
+          </div>
+        </div>
+        <div id="slMsg"></div>
+      </div>
+    </div>
+  `;
+
+  const dateEl=$('#slDate'), openEl=$('#slOpening'), recvEl=$('#slReceived'), soldEl=$('#slSold');
+  const hint=$('#slOpenHint'), calc=$('#slCalc'), msg=$('#slMsg');
+
+  async function refresh(){
+    const date = dateEl.value;
+    const entries = await getEntriesFor(state.register, state.scheme);
+    const series  = calcSeries(entries);
+    const row = series.find(r => r.date === date);
+    const existing = await getEntry(state.register, state.scheme, date);
+    let openVal;
+    if (openEl.value !== ''){
+      openVal = num(openEl.value);
+      hint.textContent = 'Manual opening entered.';
+    } else if (existing && existing.openingMode === 'manual'){
+      openEl.value = existing.opening;
+      openVal = num(existing.opening);
+      hint.textContent = 'Loaded saved manual opening.';
+    } else {
+      openVal = row ? row.opening : 0;
+      hint.textContent = `Auto-carry from previous day closing: ${fmt(openVal)} kg`;
+    }
+    if (existing){
+      if (recvEl.value==='0' && document.activeElement!==recvEl) recvEl.value = existing.received;
+      if (soldEl.value==='0' && document.activeElement!==soldEl) soldEl.value = existing.sold;
+      if (!$('#slRemarks').value) $('#slRemarks').value = existing.remarks || '';
+    }
+    const r = num(recvEl.value), s = num(soldEl.value);
+    const tot = openVal + r, close = tot - s;
+    calc.textContent =
+`Opening   : ${fmt(openVal)}
+Received  : + ${fmt(r)}
+Total     : ${fmt(tot)}
+Sold      : - ${fmt(s)}
+--------------------
+Closing   : ${fmt(close)}`;
+    msg.innerHTML = close < 0
+      ? `<div class="err-msg">Warning: sold quantity exceeds available stock by ${fmt(-close)} kg.</div>`
+      : '';
+  }
+  dateEl.addEventListener('change', refresh);
+  openEl.addEventListener('input', refresh);
+  recvEl.addEventListener('input', refresh);
+  soldEl.addEventListener('input', refresh);
+  await refresh();
+
+  $('#slSave').addEventListener('click', async ()=>{
+    try {
+      const date = dateEl.value;
+      const openingMode = openEl.value === '' ? 'carry' : 'manual';
+      const opening = openingMode === 'manual' ? num(openEl.value) : null;
+      const received = num(recvEl.value);
+      const sold     = num(soldEl.value);
+      const total = (openingMode==='manual' ? opening : (await computeCarryOpening(state.register, state.scheme, date))) + received;
+      if (sold > total && !$('#slOverride').checked){
+        throw new Error(`Sold (${fmt(sold)}) exceeds Total (${fmt(total)}). Enable override to save anyway.`);
+      }
+      await saveEntry({
+        register: state.register, scheme: state.scheme, date,
+        opening, openingMode, received, sold,
+        remarks: $('#slRemarks').value
+      });
+      msg.innerHTML = `<div class="ok-msg">Saved. Downstream carry-forward will recalculate automatically.</div>`;
+      toast('Sale saved','ok');
+      await refresh();
+    } catch(err){
+      msg.innerHTML = `<div class="err-msg">${err.message}</div>`;
+    }
+  });
+  $('#slDelete').addEventListener('click', async ()=>{
+    const date = dateEl.value;
+    const e = await getEntry(state.register, state.scheme, date);
+    if (!e){ toast('No saved entry for this date','warn'); return; }
+    if (!confirm('Delete the entry for '+date+'?')) return;
+    await deleteEntry(state.register, state.scheme, date);
+    openEl.value=''; recvEl.value=0; soldEl.value=0; $('#slRemarks').value='';
+    toast('Deleted','ok');
+    await refresh();
+  });
+}
+async function computeCarryOpening(register, scheme, date){
+  const entries = await getEntriesFor(register, scheme);
+  const series = calcSeries(entries);
+  const idx = series.findIndex(r => r.date === date);
+  if (idx <= 0) return 0;
+  return series[idx-1].closing;
+}
+
+/* ---- Master Ledger ---- */
+async function renderLedger(root){
+  const monthOpts = MONTHS.map(m => `<option value="${m.key}" ${m.key===state.monthKey?'selected':''}>${m.label}</option>`).join('');
+  const schemeOpts = SCHEMES.map(s => `<option value="${s}" ${s===state.scheme?'selected':''}>${s}</option>`).join('');
+  const regOpts = REGISTERS.map(r => `<option value="${r}" ${r===state.register?'selected':''}>${r}</option>`).join('');
+
+  root.innerHTML = `
+    <div class="card">
+      <div class="toolbar">
+        <label>Register <select id="ldReg">${regOpts}</select></label>
+        <label>Scheme <select id="ldSch">${schemeOpts}</select></label>
+        <label>Month <select id="ldMon"><option value="">All months</option>${monthOpts}</select></label>
+        <input type="text" id="ldSearch" placeholder="Search date / remarks…" class="grow" />
+        <button class="btn" id="ldPrint">🖨️ Print</button>
+        <button class="btn" id="ldCsv">⤓ CSV</button>
+      </div>
+      <div id="ldStats" class="row-flex" style="gap:14px; margin-bottom:8px"></div>
+      <div class="table-wrap">
+        <table class="data" id="ldTable">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Opening Mode</th>
+              <th class="num">Opening</th>
+              <th class="num">Received</th>
+              <th class="num">Total</th>
+              <th class="num">Sold</th>
+              <th class="num">Closing</th>
+              <th>Remarks</th>
+              <th>Sync</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="ldTbody"></tbody>
+          <tfoot><tr id="ldFoot"></tr></tfoot>
+        </table>
+      </div>
+    </div>
+  `;
+
+  const regSel=$('#ldReg'), schSel=$('#ldSch'), monSel=$('#ldMon'), search=$('#ldSearch');
+  regSel.addEventListener('change', ()=>{ setRegister(regSel.value); });
+  schSel.addEventListener('change', ()=>{ setScheme(schSel.value); });
+  monSel.addEventListener('change', ()=>{ state.monthKey = monSel.value; refresh(); });
+  search.addEventListener('input', refresh);
+  $('#ldPrint').addEventListener('click', ()=> go('print'));
+  $('#ldCsv').addEventListener('click', exportCsv);
+
+  async function refresh(){
+    const entries = await getEntriesFor(state.register, state.scheme);
+    const seriesAll = calcSeries(entries);
+    const series = filterMonth(seriesAll, monSel.value);
+    const q = (search.value || '').trim().toLowerCase();
+    const rows = series.filter(r =>
+      !q || r.date.includes(q) || (r.remarks||'').toLowerCase().includes(q)
+    );
+    const tbody = $('#ldTbody');
+    tbody.innerHTML = rows.map(r => `
+      <tr class="${r.openingMode}">
+        <td>${r.date}</td>
+        <td><span class="status-pill ${r.openingMode}">${r.openingMode==='manual'?'Manual':'Carry-fwd'}</span></td>
+        <td class="num">${fmt(r.opening)}</td>
+        <td class="num">${fmt(r.received)}</td>
+        <td class="num">${fmt(r.total)}</td>
+        <td class="num">${fmt(r.sold)}</td>
+        <td class="num" style="${r.closing<0?'color:#fca5a5':''}">${fmt(r.closing)}</td>
+        <td>${(r.remarks||'').replace(/</g,'&lt;')}</td>
+        <td>${r.entry ? (r.entry.syncStatus==='synced'?'🟢':'🟠') : '·'}</td>
+        <td><button class="btn sm" data-edit="${r.date}">✎</button></td>
+      </tr>
+    `).join('') || `<tr><td colspan="10" class="center help">No rows match.</td></tr>`;
+
+    // Stats
+    const recv = sumOver(rows,'received'), sold = sumOver(rows,'sold');
+    const open = rows.length ? rows[0].opening : 0;
+    const close = rows.length ? rows[rows.length-1].closing : 0;
+    const scope = monSel.value ? MONTHS.find(m=>m.key===monSel.value).label : 'Full period';
+    const filtered = q ? ' (search filter applied)' : '';
+    $('#ldStats').innerHTML = `
+      <span class="pill">Scope: ${scope}${filtered}</span>
+      <span class="pill">Opening: <strong>${fmt(open)}</strong></span>
+      <span class="pill">Received: <strong>${fmt(recv)}</strong></span>
+      <span class="pill">Sold: <strong>${fmt(sold)}</strong></span>
+      <span class="pill">Closing: <strong>${fmt(close)}</strong></span>
+      <span class="pill">Rows: <strong>${rows.length}</strong></span>`;
+    $('#ldFoot').innerHTML = `
+      <td colspan="3"><strong>TOTAL (${rows.length} days)</strong></td>
+      <td class="num">${fmt(recv)}</td>
+      <td class="num">${fmt(open + recv)}</td>
+      <td class="num">${fmt(sold)}</td>
+      <td class="num">${fmt(close)}</td>
+      <td colspan="3"></td>`;
+
+    // Edit buttons
+    $$('[data-edit]', tbody).forEach(b => b.addEventListener('click', ()=>{
+      const d = b.dataset.edit;
+      state.monthKey = monthKey(d);
+      // Jump to Sales page pre-filled
+      go('sales').then(()=> {
+        const dateEl = $('#slDate');
+        if (dateEl){ dateEl.value = d; dateEl.dispatchEvent(new Event('change')); }
+      });
+    }));
+  }
+
+  function exportCsv(){
+    const rows = [];
+    rows.push(['Register','Scheme','Date','OpeningMode','Opening','Received','Total','Sold','Closing','Remarks']);
+    idbAll('entries','by_rs',IDBKeyRange.only([state.register, state.scheme])).then(list=>{
+      const series = calcSeries(list);
+      const scope = monSel.value ? filterMonth(series, monSel.value) : series;
+      for (const r of scope){
+        rows.push([state.register,state.scheme,r.date,r.openingMode,r.opening,r.received,r.total,r.sold,r.closing,(r.remarks||'').replace(/,/g,';')]);
+      }
+      const csv = rows.map(r => r.map(v => {
+        const s = String(v ?? ''); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+      }).join(',')).join('\n');
+      downloadBlob(csv, `${state.register}-${state.scheme}-${monSel.value||'ALL'}.csv`, 'text/csv');
+    });
+  }
+
+  await refresh();
+}
+
+/* ---- Print Register (production print page) ---- */
+async function renderPrint(root){
+  const monthOpts = MONTHS.map(m => `<option value="${m.key}" ${m.key===state.monthKey?'selected':''}>${m.label}</option>`).join('');
+  root.innerHTML = `
+    <div class="card no-print">
+      <div class="toolbar">
+        <label>Month <select id="prMon"><option value="">Full period (Sep 2026 – Mar 2027)</option>${monthOpts}</select></label>
+        <label>Scheme <select id="prSch">${SCHEMES.map(s=>`<option ${s===state.scheme?'selected':''}>${s}</option>`).join('')}</select></label>
+        <button class="btn primary" id="prBtn">🖨️ Print</button>
+        <span class="help">Uses A4 print layout, matches the reference Excel Print sheets (FPS Code ${FPS_CODE}).</span>
+      </div>
+    </div>
+    <div id="prBody"></div>
+  `;
+  const monSel=$('#prMon'), schSel=$('#prSch'), body=$('#prBody');
+  monSel.addEventListener('change', build);
+  schSel.addEventListener('change', ()=>{ state.scheme = schSel.value; setScheme(schSel.value); });
+  $('#prBtn').addEventListener('click', ()=> window.print());
+
+  async function build(){
+    const scheme = schSel.value;
+    const entries = await getEntriesFor(state.register, scheme);
+    const series  = calcSeries(entries);
+    const rows = monSel.value ? filterMonth(series, monSel.value) : series;
+    const monthLabel = monSel.value ? MONTHS.find(m=>m.key===monSel.value).label : 'SEPTEMBER 2026 – MARCH 2027';
+    const totRecv = sumOver(rows,'received'), totSold = sumOver(rows,'sold');
+    const openFirst = rows.length ? rows[0].opening : 0;
+    const closeLast = rows.length ? rows[rows.length-1].closing : 0;
+
+    body.innerHTML = `
+      <div class="card">
+        <div class="print-header">
+          <h2>FPS STOCK REGISTER</h2>
+          <div><strong>FPS CODE NO.</strong> — ${FPS_CODE} &nbsp;|&nbsp; <strong>SCHEME</strong> — ${state.register} RICE — ${scheme}</div>
+        </div>
+        <div class="print-meta">
+          <div><strong>MONTH / YEAR:</strong> ${monthLabel}</div>
+          <div><strong>PAGE NO:</strong> _____</div>
+        </div>
+        <div class="table-wrap">
+          <table class="data print-reg">
+            <thead>
+              <tr>
+                <th>DATE OF TRANSACTION</th>
+                <th class="num">OPENING BALANCE</th>
+                <th class="num">RECEIPT</th>
+                <th class="num">TOTAL</th>
+                <th class="num">QUANTITY (SOLD)</th>
+                <th class="num">CLOSING BALANCE</th>
+                <th>REMARKS</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.map(r=>`<tr>
+                <td>${r.date}</td>
+                <td class="num">${fmt(r.opening)}</td>
+                <td class="num">${fmt(r.received)}</td>
+                <td class="num">${fmt(r.total)}</td>
+                <td class="num">${fmt(r.sold)}</td>
+                <td class="num">${fmt(r.closing)}</td>
+                <td>${(r.remarks||'').replace(/</g,'&lt;')}</td>
+              </tr>`).join('')}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td><strong>TOTAL</strong></td>
+                <td class="num">${fmt(openFirst)}</td>
+                <td class="num">${fmt(totRecv)}</td>
+                <td class="num">${fmt(openFirst + totRecv)}</td>
+                <td class="num">${fmt(totSold)}</td>
+                <td class="num">${fmt(closeLast)}</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        <div style="margin-top:20px; display:flex; justify-content:space-between">
+          <div>Signature of Dealer: __________________</div>
+          <div>Signature of Inspector: __________________</div>
+        </div>
+      </div>
+    `;
+  }
+  await build();
+}
+
+/* ================================================================
+   Reference pages (mirror the Excel workbook structure exactly)
+   ================================================================ */
+
+/* Ref: Dashboard sheet — filter card, KPIs, monthly breakdown (per-scheme columns) */
+async function renderRefDashboard(root){
+  const monthOpts = MONTHS.map(m => `<option value="${m.key}" ${m.key===state.monthKey?'selected':''}>${m.label}</option>`).join('');
+  root.innerHTML = `
+    <div class="card">
+      <h2>RICE DISTRIBUTION &amp; PENDING STOCK DASHBOARD</h2>
+      <div class="help">Mirrors the <em>DASHBOARD</em> sheet — register: <strong>${state.register}</strong></div>
+      <div class="toolbar" style="margin-top:8px">
+        <label>Filter Card <select id="rdSch">${SCHEMES.map(s=>`<option ${s===state.scheme?'selected':''}>${s}</option>`).join('')}</select></label>
+        <label>Filter Month <select id="rdMon"><option value="">All months</option>${monthOpts}</select></label>
+        <span class="pill">Active View: <strong id="rdActive">${state.scheme} | All months</strong></span>
+      </div>
+    </div>
+    <div class="grid k4" style="margin-top:12px">
+      <div class="card kpi blue"><div class="lbl">Total Received</div><div class="val" id="rdRecv">0</div></div>
+      <div class="card kpi green"><div class="lbl">Total Sold</div><div class="val" id="rdSold">0</div></div>
+      <div class="card kpi violet"><div class="lbl">Total Pending</div><div class="val" id="rdPend">0</div></div>
+      <div class="card kpi orange"><div class="lbl">Distribution %</div><div class="val small" id="rdPct">0%</div></div>
+    </div>
+    <div class="card" style="margin-top:12px">
+      <h3>Monthly Stock Breakdown (Receive − Sold = Pending)</h3>
+      <div class="table-wrap">
+        <table class="data">
+          <thead>
+            <tr>
+              <th rowspan="2">Month / Year</th>
+              <th colspan="3" style="text-align:center">AAY SCHEME</th>
+              <th colspan="3" style="text-align:center">PHH SCHEME</th>
+              <th colspan="3" style="text-align:center">SFSS SCHEME</th>
+              <th colspan="3" style="text-align:center">TOTAL (ALL SCHEMES)</th>
+            </tr>
+            <tr>
+              <th class="num">Recv</th><th class="num">Sold</th><th class="num">Pend</th>
+              <th class="num">Recv</th><th class="num">Sold</th><th class="num">Pend</th>
+              <th class="num">Recv</th><th class="num">Sold</th><th class="num">Pend</th>
+              <th class="num">Recv</th><th class="num">Sold</th><th class="num">Pend</th>
+            </tr>
+          </thead>
+          <tbody id="rdMonthly"></tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  const schSel = $('#rdSch'), monSel = $('#rdMon');
+  schSel.addEventListener('change', build);
+  monSel.addEventListener('change', build);
+
+  async function seriesFor(scheme){ return calcSeries(await getEntriesFor(state.register, scheme)); }
+
+  async function build(){
+    const scheme = schSel.value, mk = monSel.value;
+    $('#rdActive').textContent = `${scheme} | ${mk ? MONTHS.find(m=>m.key===mk).label : 'All months'}`;
+
+    const s = await seriesFor(scheme);
+    const rows = mk ? filterMonth(s, mk) : s;
+    const recv = sumOver(rows,'received'), sold = sumOver(rows,'sold');
+    const pend = rows.length ? rows[rows.length-1].closing : 0;
+    $('#rdRecv').innerHTML = fmt(recv) + ' <small>kg</small>';
+    $('#rdSold').innerHTML = fmt(sold) + ' <small>kg</small>';
+    $('#rdPend').innerHTML = fmt(pend) + ' <small>kg</small>';
+    $('#rdPct').textContent = (recv>0 ? fmt(sold/recv*100) : '0') + '%';
+
+    const sA = await seriesFor('AAY'), sP = await seriesFor('PHH'), sF = await seriesFor('SFSS');
+    const tbody = $('#rdMonthly');
+    const html = [];
+    const grand = {aR:0,aS:0,aP:0, pR:0,pS:0,pP:0, fR:0,fS:0,fP:0};
+    for (const m of MONTHS){
+      const ra = filterMonth(sA, m.key), rp = filterMonth(sP, m.key), rf = filterMonth(sF, m.key);
+      const aR = sumOver(ra,'received'), aS = sumOver(ra,'sold'), aP = ra.length ? ra[ra.length-1].closing : 0;
+      const pR = sumOver(rp,'received'), pS = sumOver(rp,'sold'), pP = rp.length ? rp[rp.length-1].closing : 0;
+      const fR = sumOver(rf,'received'), fS = sumOver(rf,'sold'), fP = rf.length ? rf[rf.length-1].closing : 0;
+      grand.aR+=aR; grand.aS+=aS; grand.pR+=pR; grand.pS+=pS; grand.fR+=fR; grand.fS+=fS;
+      html.push(`<tr>
+        <td>${m.label}</td>
+        <td class="num">${fmt(aR)}</td><td class="num">${fmt(aS)}</td><td class="num">${fmt(aP)}</td>
+        <td class="num">${fmt(pR)}</td><td class="num">${fmt(pS)}</td><td class="num">${fmt(pP)}</td>
+        <td class="num">${fmt(fR)}</td><td class="num">${fmt(fS)}</td><td class="num">${fmt(fP)}</td>
+        <td class="num">${fmt(aR+pR+fR)}</td><td class="num">${fmt(aS+pS+fS)}</td><td class="num">${fmt(aP+pP+fP)}</td>
+      </tr>`);
+    }
+    grand.aP = sA.length ? sA[sA.length-1].closing : 0;
+    grand.pP = sP.length ? sP[sP.length-1].closing : 0;
+    grand.fP = sF.length ? sF[sF.length-1].closing : 0;
+    html.push(`<tr class="totals">
+      <td><strong>GRAND TOTAL (kg)</strong></td>
+      <td class="num">${fmt(grand.aR)}</td><td class="num">${fmt(grand.aS)}</td><td class="num">${fmt(grand.aP)}</td>
+      <td class="num">${fmt(grand.pR)}</td><td class="num">${fmt(grand.pS)}</td><td class="num">${fmt(grand.pP)}</td>
+      <td class="num">${fmt(grand.fR)}</td><td class="num">${fmt(grand.fS)}</td><td class="num">${fmt(grand.fP)}</td>
+      <td class="num">${fmt(grand.aR+grand.pR+grand.fR)}</td>
+      <td class="num">${fmt(grand.aS+grand.pS+grand.fS)}</td>
+      <td class="num">${fmt(grand.aP+grand.pP+grand.fP)}</td>
+    </tr>`);
+    tbody.innerHTML = html.join('');
+  }
+  await build();
+}
+
+/* Ref: Master List — three schemes side-by-side, daily rows */
+async function renderRefMaster(root){
+  const sA = calcSeries(await getEntriesFor(state.register,'AAY'));
+  const sP = calcSeries(await getEntriesFor(state.register,'PHH'));
+  const sF = calcSeries(await getEntriesFor(state.register,'SFSS'));
+  const totRecv = sumOver(sA,'received') + sumOver(sP,'received') + sumOver(sF,'received');
+  const totSold = sumOver(sA,'sold') + sumOver(sP,'sold') + sumOver(sF,'sold');
+  const totPend = (sA.at(-1)?.closing||0) + (sP.at(-1)?.closing||0) + (sF.at(-1)?.closing||0);
+
+  const tbl = (label, series) => `
+    <div class="col card">
+      <h4><span class="scheme-tag ${label.toLowerCase()}">${label}</span>
+        &nbsp;GRAND TOTAL ${state.register} SEP–MARCH</h4>
+      <div class="table-wrap" style="max-height:640px">
+      <table class="data">
+        <thead><tr>
+          <th>Date</th><th class="num">Opening</th><th class="num">Received</th>
+          <th class="num">Total</th><th class="num">Selling</th><th class="num">Closing</th>
+        </tr></thead>
+        <tbody>
+          ${series.map(r => `<tr>
+            <td>${r.date}</td>
+            <td class="num">${fmt(r.opening)}</td>
+            <td class="num">${fmt(r.received)}</td>
+            <td class="num">${fmt(r.total)}</td>
+            <td class="num">${fmt(r.sold)}</td>
+            <td class="num">${fmt(r.closing)}</td>
+          </tr>`).join('')}
+        </tbody>
+        <tfoot><tr>
+          <td><strong>TOTAL</strong></td>
+          <td class="num">${fmt(series[0]?.opening||0)}</td>
+          <td class="num">${fmt(sumOver(series,'received'))}</td>
+          <td class="num">${fmt((series[0]?.opening||0)+sumOver(series,'received'))}</td>
+          <td class="num">${fmt(sumOver(series,'sold'))}</td>
+          <td class="num">${fmt(series.at(-1)?.closing||0)}</td>
+        </tr></tfoot>
+      </table>
+      </div>
+    </div>`;
+
+  root.innerHTML = `
+    <div class="card">
+      <div class="row-flex">
+        <h2>MASTER LIST — ${state.register}</h2>
+        <span class="pill">Color guide: <strong style="color:#fca5a5">Out of Stock</strong></span>
+        <span class="pill">Total Received: <strong>${fmt(totRecv)}</strong></span>
+        <span class="pill">Total Selling: <strong>${fmt(totSold)}</strong></span>
+        <span class="pill">Total Pending: <strong>${fmt(totPend)}</strong></span>
+      </div>
+      <div class="help">Mirrors the <em>MASTER LIST</em> sheet — three schemes side-by-side.</div>
+    </div>
+    <div class="master-grid" style="margin-top:12px">
+      ${tbl('AAY', sA)}
+      ${tbl('PHH', sP)}
+      ${tbl('SFSS', sF)}
+    </div>
+  `;
+}
+
+/* Ref: per-scheme register — 7 months side-by-side + grand total */
+async function renderRefScheme(scheme){
+  const root = $('#pageRoot');
+  const series = calcSeries(await getEntriesFor(state.register, scheme));
+  const maxDays = 31;
+
+  // Build header
+  let head1 = `<tr><th class="sub">Day</th>`;
+  let head2 = `<tr><th class="sub"></th>`;
+  for (const m of MONTHS){
+    head1 += `<th class="month" colspan="5">${m.label}</th><th class="gap"></th>`;
+    head2 += `<th class="sub">Opening</th><th class="sub">Receive</th><th class="sub">Total</th><th class="sub">Selling</th><th class="sub">Closing</th><th class="gap"></th>`;
+  }
+  head1 += `<th class="month" colspan="3">GRAND TOTAL ${state.register} (SEP–MAR) — ${scheme}</th></tr>`;
+  head2 += `<th class="sub">Recv</th><th class="sub">Selling</th><th class="sub">Pending</th></tr>`;
+
+  // Group series by month for quick lookup
+  const byMonth = {};
+  for (const m of MONTHS) byMonth[m.key] = new Array(maxDays+1).fill(null);
+  for (const r of series) byMonth[r.month][r.day] = r;
+
+  // Body: day 1..31
+  let body = '';
+  for (let d=1; d<=maxDays; d++){
+    body += `<tr><td class="day">${d}</td>`;
+    for (const m of MONTHS){
+      const r = byMonth[m.key][d];
+      if (!r){
+        body += `<td colspan="5" style="background:#0a1428;color:#334155">—</td><td class="gap"></td>`;
+      } else {
+        body += `<td class="num">${fmt(r.opening)}</td><td class="num">${fmt(r.received)}</td><td class="num">${fmt(r.total)}</td><td class="num">${fmt(r.sold)}</td><td class="num">${fmt(r.closing)}</td><td class="gap"></td>`;
+      }
+    }
+    body += `<td></td><td></td><td></td></tr>`;
+  }
+
+  // Totals
+  let totals = `<tr class="totals"><td>TOTAL</td>`;
+  let gRecv=0, gSold=0;
+  for (const m of MONTHS){
+    const rows = byMonth[m.key].filter(Boolean);
+    const open = rows[0]?.opening || 0;
+    const rcv  = sumOver(rows,'received');
+    const sold = sumOver(rows,'sold');
+    const close= rows.at(-1)?.closing || 0;
+    gRecv += rcv; gSold += sold;
+    totals += `<td class="num">${fmt(open)}</td><td class="num">${fmt(rcv)}</td><td class="num">${fmt(open+rcv)}</td><td class="num">${fmt(sold)}</td><td class="num">${fmt(close)}</td><td class="gap"></td>`;
+  }
+  const gPend = series.at(-1)?.closing || 0;
+  totals += `<td class="num">${fmt(gRecv)}</td><td class="num">${fmt(gSold)}</td><td class="num">${fmt(gPend)}</td></tr>`;
+
+  root.innerHTML = `
+    <div class="card">
+      <div class="row-flex">
+        <h2>${scheme} RICE DISTRIBUTION REGISTER (ISOLATED MONTHS) — ${state.register}</h2>
+        <span class="scheme-tag ${scheme.toLowerCase()}">${scheme}</span>
+      </div>
+      <div class="help">Mirrors the <em>${scheme}</em> sheet — 7 months side-by-side with Grand Total.</div>
+    </div>
+    <div class="months-scroller" style="margin-top:12px">
+      <table class="reg">
+        <thead>${head1}${head2}</thead>
+        <tbody>${body}</tbody>
+        <tfoot>${totals}</tfoot>
+      </table>
+    </div>
+  `;
+}
+
+/* Ref: All Received Amount — monthly consolidated + daily receipt log */
+async function renderRefReceived(root){
+  const sA = calcSeries(await getEntriesFor(state.register,'AAY'));
+  const sP = calcSeries(await getEntriesFor(state.register,'PHH'));
+  const sF = calcSeries(await getEntriesFor(state.register,'SFSS'));
+  const totA = sumOver(sA,'received'), totP = sumOver(sP,'received'), totF = sumOver(sF,'received');
+  const totAll = totA + totP + totF;
+
+  // Monthly summary
+  const monthly = MONTHS.map(m => {
+    const a = sumOver(filterMonth(sA,m.key),'received');
+    const p = sumOver(filterMonth(sP,m.key),'received');
+    const f = sumOver(filterMonth(sF,m.key),'received');
+    const t = a+p+f;
+    return {m, a, p, f, t, pct: totAll>0? t/totAll*100 : 0, status: t>0 ? 'Received' : 'No Inflow'};
+  });
+
+  // Daily receipt log — any date with received>0 in any scheme
+  const dailyMap = new Map();
+  function put(scheme, series){
+    for (const r of series){
+      if (num(r.received) > 0){
+        const cur = dailyMap.get(r.date) || {date:r.date, month:MONTHS.find(mm=>mm.key===r.month).label, aay:0, phh:0, sfss:0};
+        cur[scheme.toLowerCase()] += num(r.received);
+        dailyMap.set(r.date, cur);
+      }
+    }
+  }
+  put('AAY',sA); put('PHH',sP); put('SFSS',sF);
+  const daily = Array.from(dailyMap.values()).sort((a,b)=>a.date<b.date?-1:1);
+
+  root.innerHTML = `
+    <div class="card">
+      <h2>${state.register} RICE ALLOCATION &amp; STOCK RECEIPT REGISTER</h2>
+      <div class="help">CONSOLIDATED MONTHLY SUMMARY &amp; AUTOMATIC DAILY RECEIPT LOG</div>
+      <div class="row-flex" style="margin-top:8px">
+        <span class="pill">TOTAL AAY: <strong>${fmt(totA)}</strong></span>
+        <span class="pill">TOTAL PHH: <strong>${fmt(totP)}</strong></span>
+        <span class="pill">TOTAL SFSS: <strong>${fmt(totF)}</strong></span>
+        <span class="pill">GRAND: <strong>${fmt(totAll)}</strong></span>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <h3>1. Monthly Consolidated Receipt Summary (Sep 2026 – Mar 2027)</h3>
+      <div class="table-wrap">
+        <table class="data">
+          <thead><tr>
+            <th>Month / Year</th>
+            <th class="num">AAY Received (kg)</th>
+            <th class="num">PHH Received (kg)</th>
+            <th class="num">SFSS Received (kg)</th>
+            <th class="num">Month Total (kg)</th>
+            <th class="num">Allocation %</th>
+            <th>Monthly Inflow Status</th>
+          </tr></thead>
+          <tbody>
+            ${monthly.map(x => `<tr>
+              <td>${x.m.label}</td>
+              <td class="num">${fmt(x.a)}</td>
+              <td class="num">${fmt(x.p)}</td>
+              <td class="num">${fmt(x.f)}</td>
+              <td class="num">${fmt(x.t)}</td>
+              <td class="num">${fmt(x.pct)}%</td>
+              <td>${x.status}</td>
+            </tr>`).join('')}
+            <tr class="totals">
+              <td><strong>GRAND TOTAL (kg)</strong></td>
+              <td class="num">${fmt(totA)}</td>
+              <td class="num">${fmt(totP)}</td>
+              <td class="num">${fmt(totF)}</td>
+              <td class="num">${fmt(totAll)}</td>
+              <td class="num">${totAll>0?'100':'0'}%</td>
+              <td>100% AUDITED</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <h3>2. Automatic Daily Receipt Log (auto-detected from entries)</h3>
+      <div class="table-wrap">
+        <table class="data">
+          <thead><tr>
+            <th>SL NO</th><th>Date of Receipt</th><th>Month</th>
+            <th class="num">AAY (kg)</th><th class="num">PHH (kg)</th><th class="num">SFSS (kg)</th>
+            <th class="num">Total (kg)</th>
+          </tr></thead>
+          <tbody>
+            ${daily.length ? daily.map((r,i)=>`<tr>
+              <td>${i+1}</td><td>${r.date}</td><td>${r.month}</td>
+              <td class="num">${fmt(r.aay)}</td>
+              <td class="num">${fmt(r.phh)}</td>
+              <td class="num">${fmt(r.sfss)}</td>
+              <td class="num">${fmt(r.aay+r.phh+r.sfss)}</td>
+            </tr>`).join('') : `<tr><td colspan="7" class="center help">No receipts recorded yet.</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+/* Ref: Print — exact format of AAY/PHH/SFSS PRINT sheets */
+async function renderRefPrint(scheme){
+  const root = $('#pageRoot');
+  const series = calcSeries(await getEntriesFor(state.register, scheme));
+  const totRecv = sumOver(series,'received'), totSold = sumOver(series,'sold');
+  const openFirst = series[0]?.opening || 0;
+  const closeLast = series.at(-1)?.closing || 0;
+
+  const showCards = (scheme === 'AAY'); // AAY PRINT sheet includes "NO. OF CARDS" column
+  root.innerHTML = `
+    <div class="card no-print">
+      <div class="row-flex">
+        <h2>${scheme} PRINT — ${state.register}</h2>
+        <button class="btn primary" onclick="window.print()">🖨️ Print</button>
+      </div>
+      <div class="help">Mirrors the Excel <em>${scheme} PRINT</em> layout.</div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <div class="print-header">
+        <div><strong>MONTH/YEAR —</strong> SEPTEMBER 2026 - MARCH 2027 &nbsp;&nbsp; <strong>PAGE NO —</strong> _____</div>
+        <div><strong>FPS STOCK REGISTER / FPS CODE NO.</strong> — ${FPS_CODE} &nbsp;&nbsp; <strong>SCHEME —</strong> ${state.register} RICE — ${scheme}</div>
+      </div>
+      <div class="table-wrap">
+      <table class="data print-reg">
+        <thead>
+          <tr>
+            <th>DATE OF TRANSACTION</th>
+            <th class="num">OPENING BALANCE</th>
+            <th class="num">RECEIPT</th>
+            <th class="num">TOTAL</th>
+            ${showCards ? '<th class="num">NO. OF CARDS</th>' : ''}
+            <th class="num">QUANTITY</th>
+            <th class="num">CLOSING BALANCE</th>
+            <th>REMARKS</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${series.map(r=>`<tr>
+            <td>${r.date}</td>
+            <td class="num">${fmt(r.opening)}</td>
+            <td class="num">${fmt(r.received)}</td>
+            <td class="num">${fmt(r.total)}</td>
+            ${showCards ? '<td class="num"></td>' : ''}
+            <td class="num">${fmt(r.sold)}</td>
+            <td class="num">${fmt(r.closing)}</td>
+            <td>${(r.remarks||'').replace(/</g,'&lt;')}</td>
+          </tr>`).join('')}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td><strong>TOTAL</strong></td>
+            <td class="num">${fmt(openFirst)}</td>
+            <td class="num">${fmt(totRecv)}</td>
+            <td class="num">${fmt(openFirst + totRecv)}</td>
+            ${showCards ? '<td class="num"></td>' : ''}
+            <td class="num">${fmt(totSold)}</td>
+            <td class="num">${fmt(closeLast)}</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+      </div>
+    </div>
+  `;
+}
+
+/* ---- Backup / Restore ---- */
+/* ---- Sync Queue (pending offline uploads) ---- */
+async function renderSyncQueue(root){
+  const url = await getSetting('gasUrl','');
+  root.innerHTML = `
+    <div class="card">
+      <div class="row-flex">
+        <h2>Sync Queue</h2>
+        <span class="pill" id="sqOnline"></span>
+        <span class="pill" id="sqUrl"></span>
+        <div class="right actions">
+          <button class="btn primary" id="sqSyncNow">↻ Sync Now</button>
+          <button class="btn" id="sqRefresh">🔄 Refresh</button>
+          <button class="btn err" id="sqClear">🗑 Drop All Pending</button>
+        </div>
+      </div>
+      <div class="help">Every save is written to the local database first, then queued here for upload to Google Sheets. When you come back online (or the periodic retry fires) the queue drains automatically. Successful items disappear from this list; failed items stay with an <em>error</em> and a backoff timer.</div>
+      <div class="row-flex" id="sqStats" style="margin-top:8px"></div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <div class="table-wrap">
+        <table class="data">
+          <thead><tr>
+            <th>Queued</th>
+            <th>Register</th>
+            <th>Scheme</th>
+            <th>Date</th>
+            <th class="num">Recv</th>
+            <th class="num">Sold</th>
+            <th>Op</th>
+            <th class="num">Attempts</th>
+            <th>Next retry</th>
+            <th>Last error</th>
+            <th></th>
+          </tr></thead>
+          <tbody id="sqBody"></tbody>
+        </table>
+      </div>
+    </div>
+  `;
+  $('#sqOnline').textContent = navigator.onLine ? '🟢 Online' : '🔴 Offline';
+  $('#sqUrl').textContent = url ? '⚙️ Sync configured' : '⚙️ Sync not configured';
+  $('#sqSyncNow').addEventListener('click', async ()=>{
+    if (!url){ toast('Set the Apps Script URL in Settings first','warn'); return; }
+    if (!navigator.onLine){ toast('You are offline — will retry automatically when back online','warn'); return; }
+    const r = await trySync({force:true});
+    toast(`Sync run: ${r.sent} sent, ${r.failed} failed`, r.failed ? 'warn' : 'ok');
+    build();
+  });
+  $('#sqRefresh').addEventListener('click', build);
+  $('#sqClear').addEventListener('click', async ()=>{
+    const q = await idbAll('syncQueue');
+    if (!q.length){ toast('Queue already empty','ok'); return; }
+    if (!confirm(`Drop ${q.length} pending upload(s)? The local records stay intact, but they will not be pushed to Google Sheets until you edit them again.`)) return;
+    await idbClear('syncQueue');
+    // Mark affected entries back to 'pending' so a future re-sync becomes possible.
+    updateSyncBadge();
+    build();
+    toast('Queue cleared','warn');
+  });
+
+  async function build(){
+    const q = await idbAll('syncQueue');
+    const now = Date.now();
+    const waiting = q.filter(x => x.nextRetryAt && x.nextRetryAt > now).length;
+    const ready   = q.length - waiting;
+    $('#sqStats').innerHTML = `
+      <span class="pill">Pending: <strong>${q.length}</strong></span>
+      <span class="pill">Ready to send: <strong>${ready}</strong></span>
+      <span class="pill">Waiting for backoff: <strong>${waiting}</strong></span>
+      <span class="pill">Device: <span class="mono">${DEVICE_ID}</span></span>`;
+    if (!q.length){
+      $('#sqBody').innerHTML = `<tr><td colspan="11" class="center help">Queue is empty — everything is synced.</td></tr>`;
+      return;
+    }
+    q.sort((a,b) => (a.at||0) - (b.at||0));
+    $('#sqBody').innerHTML = q.map(x => {
+      const e = x.entry || {};
+      const retry = x.nextRetryAt && x.nextRetryAt > now
+        ? `in ${Math.ceil((x.nextRetryAt - now)/1000)}s`
+        : (x.nextRetryAt ? 'ready' : 'now');
+      const del = e._deleted ? '<span class="status-pill" style="background:#3f1d1d;border-color:#7f1d1d;color:#fecaca">delete</span>' : x.op;
+      return `<tr>
+        <td>${new Date(x.at).toLocaleString()}</td>
+        <td>${e.register||''}</td>
+        <td><span class="scheme-tag ${(e.scheme||'').toLowerCase()}">${e.scheme||''}</span></td>
+        <td>${e.date||''}</td>
+        <td class="num">${fmt(num(e.received))}</td>
+        <td class="num">${fmt(num(e.sold))}</td>
+        <td>${del}</td>
+        <td class="num">${x.attempts||0}</td>
+        <td>${retry}</td>
+        <td class="tiny" style="max-width:260px;white-space:normal;color:#fca5a5">${(x.lastError||'').replace(/</g,'&lt;')}</td>
+        <td><button class="btn sm" data-drop="${x.qid}">Drop</button></td>
+      </tr>`;
+    }).join('');
+    $$('[data-drop]', $('#sqBody')).forEach(b => b.addEventListener('click', async ()=>{
+      if (!confirm('Drop this pending upload?')) return;
+      await idbDelete('syncQueue', Number(b.dataset.drop));
+      updateSyncBadge(); build();
+    }));
+  }
+  build();
+}
+
+async function renderBackup(root){
+  root.innerHTML = `
+    <div class="card">
+      <h2>Backup / Restore</h2>
+      <div class="help">Local data lives in your browser (IndexedDB). Take a JSON backup regularly, especially before clearing browser data.</div>
+      <div class="actions" style="margin-top:10px">
+        <button class="btn ok" id="bkJson">⤓ Export JSON (full backup)</button>
+        <button class="btn" id="bkCsv">⤓ Export CSV (all entries)</button>
+        <label class="btn warn" style="cursor:pointer">
+          ⤒ Import JSON
+          <input type="file" id="bkImp" accept="application/json" style="display:none" />
+        </label>
+        <button class="btn err" id="bkWipe">🗑 Wipe local database</button>
+      </div>
+      <div id="bkMsg" style="margin-top:10px"></div>
+    </div>
+    <div class="card" style="margin-top:12px">
+      <h3>What's included</h3>
+      <ul>
+        <li>All NFSA entries — AAY / PHH / SFSS</li>
+        <li>All CMAY entries — AAY / PHH / SFSS</li>
+        <li>Opening mode (manual / carry) and remarks</li>
+        <li>Non-secret settings (Apps Script URL is <em>excluded</em> from backup for safety)</li>
+      </ul>
+    </div>
+  `;
+  $('#bkJson').addEventListener('click', async ()=>{
+    const entries = await idbAll('entries');
+    const payload = {version:1, exportedAt: new Date().toISOString(), deviceId: DEVICE_ID, entries};
+    downloadBlob(JSON.stringify(payload,null,2), `fps-rice-backup-${isoDate(new Date())}.json`, 'application/json');
+    toast('Backup exported','ok');
+  });
+  $('#bkCsv').addEventListener('click', async ()=>{
+    const entries = await idbAll('entries');
+    const rows = [['Register','Scheme','Date','OpeningMode','Opening','Received','Sold','Remarks','UpdatedAt']];
+    for (const e of entries){
+      rows.push([e.register,e.scheme,e.date,e.openingMode,e.opening??'',e.received,e.sold,(e.remarks||'').replace(/,/g,';'),e.updatedAt]);
+    }
+    const csv = rows.map(r => r.map(v => {
+      const s = String(v ?? ''); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+    }).join(',')).join('\n');
+    downloadBlob(csv, `fps-rice-entries-${isoDate(new Date())}.csv`, 'text/csv');
+  });
+  $('#bkImp').addEventListener('change', async (ev)=>{
+    const f = ev.target.files[0]; if (!f) return;
+    try {
+      const text = await f.text();
+      const data = JSON.parse(text);
+      if (!data || !Array.isArray(data.entries)) throw new Error('Invalid backup: missing entries array');
+      let added=0, updated=0;
+      for (const e of data.entries){
+        if (!e.register || !e.scheme || !e.date) continue;
+        const existing = await getEntry(e.register, e.scheme, e.date);
+        const rec = {
+          id: existing ? existing.id : (e.id || uid()),
+          key: makeKey(e.register, e.scheme, e.date),
+          register:e.register, scheme:e.scheme, date:e.date, month: monthKey(e.date),
+          opening: e.opening ?? null,
+          openingMode: e.openingMode || (e.opening!=null ? 'manual' : 'carry'),
+          received: num(e.received), sold: num(e.sold),
+          remarks: e.remarks || '',
+          createdAt: e.createdAt || new Date().toISOString(),
+          updatedAt: e.updatedAt || new Date().toISOString(),
+          deviceId: e.deviceId || DEVICE_ID,
+          syncStatus: 'pending'
+        };
+        if (existing) updated++; else added++;
+        await idbPut('entries', rec);
+      }
+      $('#bkMsg').innerHTML = `<div class="ok-msg">Import complete: added ${added}, updated ${updated}.</div>`;
+      toast('Backup imported','ok');
+      updateSyncBadge();
+    } catch(err){
+      $('#bkMsg').innerHTML = `<div class="err-msg">${err.message}</div>`;
+    }
+  });
+  $('#bkWipe').addEventListener('click', async ()=>{
+    if (!confirm('Delete ALL locally-stored entries? This cannot be undone.')) return;
+    if (!confirm('Are you REALLY sure? Consider exporting a backup first.')) return;
+    await idbClear('entries');
+    await idbClear('syncQueue');
+    toast('Local database wiped','warn');
+    updateSyncBadge();
+    go('dashboard');
+  });
+}
+
+/* ---- Settings ---- */
+async function renderSettings(root){
+  const url = await getSetting('gasUrl','');
+  root.innerHTML = `
+    <div class="card">
+      <h2>Settings</h2>
+      <div class="form">
+        <div class="row">
+          <label>Google Apps Script Web App URL</label>
+          <div class="field">
+            <input type="url" id="stUrl" placeholder="https://script.google.com/macros/s/…/exec" value="${(url||'').replace(/"/g,'&quot;')}" />
+            <div class="help">Not a secret — it is the public /exec URL of your deployed Apps Script. Deploy the script (below) as a Web App with "Anyone" access.</div>
+          </div>
+        </div>
+        <div class="row">
+          <label></label>
+          <div class="actions">
+            <button class="btn ok" id="stSave">💾 Save</button>
+            <button class="btn" id="stTest">🔌 Test Connection</button>
+            <button class="btn primary" id="stSync">↻ Sync Now</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:12px">
+      <h3>Google Apps Script — paste this into a new script bound to your Google Sheet</h3>
+      <p class="help">The script accepts <code>GET ?action=ping</code>, <code>GET ?action=read&amp;register=NFSA&amp;scheme=AAY</code>, and <code>POST {action:'upsert', rows:[…]}</code>. It writes to a sheet named <strong>FPS_Rice_Data</strong> keyed by <code>register|scheme|date</code>.</p>
+      <details><summary class="btn sm">Show script</summary>
+<pre class="calc-box" style="white-space:pre; max-height:420px; overflow:auto">/** FPS Rice Register — Google Apps Script backend
+ *  Deploy: Extensions → Apps Script → paste this file → Deploy → New deployment
+ *  Type: Web App, Execute as: Me, Who has access: Anyone. Copy the /exec URL into the app.
+ */
+const SHEET_NAME = 'FPS_Rice_Data';
+const HEADERS = ['recordId','register','scheme','date','month','openingMode','opening','received','total','sold','closing','remarks','createdAt','updatedAt','deviceId','syncStatus','deleted'];
+
+function _sheet(){
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sh = ss.getSheetByName(SHEET_NAME);
+  if (!sh){
+    sh = ss.insertSheet(SHEET_NAME);
+    sh.appendRow(HEADERS);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+function _index(){
+  const sh = _sheet();
+  const values = sh.getDataRange().getValues();
+  const idx = {};
+  for (let r=1; r&lt;values.length; r++){
+    const key = values[r][1] + '|' + values[r][2] + '|' + values[r][3];
+    idx[key] = r+1;
+  }
+  return {sh, idx, values};
+}
+function doGet(e){
+  const p = e.parameter || {};
+  if (p.action === 'ping') return _json({ok:true, at:new Date().toISOString()});
+  if (p.action === 'read'){
+    const {sh, values} = _index();
+    const out = [];
+    for (let r=1; r&lt;values.length; r++){
+      const row = values[r];
+      if (p.register &amp;&amp; row[1] !== p.register) continue;
+      if (p.scheme   &amp;&amp; row[2] !== p.scheme)   continue;
+      const obj = {}; HEADERS.forEach((h,i)=> obj[h]=row[i]);
+      out.push(obj);
+    }
+    return _json({ok:true, rows:out});
+  }
+  return _json({ok:false, err:'unknown action'});
+}
+function doPost(e){
+  const body = JSON.parse(e.postData.contents || '{}');
+  if (body.action !== 'upsert') return _json({ok:false, err:'unknown action'});
+  const {sh, idx} = _index();
+  const rows = body.rows || [];
+  let inserted=0, updated=0, deleted=0;
+  for (const r of rows){
+    const opening = r.openingMode === 'manual' ? Number(r.opening||0) : '';
+    const openResolved = Number(r.opening || 0);
+    const total = openResolved + Number(r.received||0);
+    const closing = total - Number(r.sold||0);
+    const key = r.register + '|' + r.scheme + '|' + r.date;
+    const rowVals = [
+      r.id, r.register, r.scheme, r.date, r.month, r.openingMode,
+      opening, Number(r.received||0), total, Number(r.sold||0), closing,
+      r.remarks || '', r.createdAt || '', r.updatedAt || '',
+      r.deviceId || '', 'synced', r._deleted ? 1 : 0
+    ];
+    if (idx[key]){
+      sh.getRange(idx[key], 1, 1, HEADERS.length).setValues([rowVals]);
+      updated++; if (r._deleted) deleted++;
+    } else if (!r._deleted){
+      sh.appendRow(rowVals); inserted++;
+    }
+  }
+  return _json({ok:true, inserted, updated, deleted});
+}
+function _json(o){ return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
+</pre></details>
+    </div>
+    <div class="card" style="margin-top:12px">
+      <h3>About</h3>
+      <ul>
+        <li>Device ID: <span class="mono">${DEVICE_ID}</span></li>
+        <li>Registers: <strong>NFSA</strong> and <strong>CMAY</strong> — data namespaces are fully isolated.</li>
+        <li>Accounting period: September 2026 – March 2027.</li>
+        <li>PWA: works offline once loaded; installable from browser menu.</li>
+      </ul>
+    </div>
+  `;
+  $('#stSave').addEventListener('click', async ()=>{
+    const v = ($('#stUrl').value || '').trim();
+    await setSetting('gasUrl', v);
+    toast('Settings saved','ok');
+    updateSyncBadge();
+  });
+  $('#stTest').addEventListener('click', pingBackend);
+  $('#stSync').addEventListener('click', ()=> trySync());
+}
+
+/* ---------------- Download helper ---------------- */
+function downloadBlob(content, filename, mime){
+  const blob = new Blob([content], {type:mime});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=> URL.revokeObjectURL(url), 1500);
+}
+
+/* ---------------- Boot ---------------- */
+function wireGlobal(){
+  // Sidebar nav
+  $$('#nav a').forEach(a => a.addEventListener('click', ()=> go(a.dataset.page)));
+  $$('#bottomNav a').forEach(a => a.addEventListener('click', ()=> go(a.dataset.page)));
+
+  // Register buttons
+  $$('#regBtn-NFSA, #regBtn-CMAY').forEach(b => b.addEventListener('click', ()=> setRegister(b.dataset.reg)));
+
+  // Scheme chips
+  $$('#schemeChips .chip').forEach(c => c.addEventListener('click', ()=> setScheme(c.dataset.scheme)));
+
+  // Mobile menu
+  $('#menuBtn').addEventListener('click', ()=>{
+    $('#sidebar').classList.add('open');
+    $('#backdrop').classList.add('on');
+  });
+  $('#backdrop').addEventListener('click', ()=>{
+    $('#sidebar').classList.remove('open');
+    $('#backdrop').classList.remove('on');
+  });
+
+  // Sync Now
+  $('#syncNowBtn').addEventListener('click', ()=> trySync());
+
+  // Online/offline
+  window.addEventListener('online',  ()=>{
+    updateSyncBadge();
+    toast('Back online — draining queue','ok');
+    trySync({force:true});   // reset backoff on reconnect
+    requestBackgroundSync();
+  });
+  window.addEventListener('offline', ()=>{ updateSyncBadge(); toast('Offline mode — saves will queue locally','warn'); });
+
+  // Re-sync when the tab regains focus (covers "user came back after commute").
+  document.addEventListener('visibilitychange', ()=>{
+    if (document.visibilityState === 'visible' && navigator.onLine){
+      updateSyncBadge();
+      trySync();
+    }
+  });
+
+  // Listen for messages from the service worker (Background Sync events).
+  if ('serviceWorker' in navigator){
+    navigator.serviceWorker.addEventListener('message', (ev)=>{
+      if (ev.data && ev.data.type === 'SYNC_NOW'){
+        trySync({force:true});
+      }
+    });
+  }
+}
+
+async function boot(){
+  // Restore last register / scheme
+  const savedReg = localStorage.getItem('fps-register');
+  const savedSch = localStorage.getItem('fps-scheme');
+  if (REGISTERS.includes(savedReg)) state.register = savedReg;
+  if (SCHEMES.includes(savedSch))   state.scheme   = savedSch;
+
+  setRegister(state.register);   // triggers a go(dashboard) below
+  setScheme(state.scheme);
+  wireGlobal();
+  updateSyncBadge();
+  await go('dashboard');
+
+  // Register service worker
+  if ('serviceWorker' in navigator){
+    try {
+      const reg = await navigator.serviceWorker.register('./sw.js');
+      // Trigger an early sync when SW controls the page
+      reg.addEventListener('updatefound', ()=>{});
+    } catch (err){ console.warn('SW registration failed', err); }
+  }
+
+  // Try sync on load, and start the periodic retry loop.
+  if (navigator.onLine) trySync();
+  scheduleNextSyncTick();
+  requestBackgroundSync();
+}
+
+document.addEventListener('DOMContentLoaded', boot);
+})();
+</script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v3d52b47920f24c319d37e2661827c42b1787588026925" integrity="sha512-d9sL6GJLXn6fInD1+TVXhTcQOsmxeHfmHAvwGDIxp5TO+uo1fiWW7mHomMj4MLRlCsJDTqXzWLHJFFlPCEIj/A==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79"}' crossorigin="anonymous"></script>
+</body>
+</html>
