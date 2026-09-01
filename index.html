@@ -9,7 +9,7 @@
 <link rel="icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='12' fill='%230f172a'/><text x='32' y='42' font-size='36' text-anchor='middle'>🍚</text></svg>" />
 <style>
 /* =============================================================
-   FPS Rice Register — global styles  (v1.5.0)
+   FPS Rice Register — global styles  (v1.4.0)
    ============================================================= */
 :root{
   --bg:#0b1220; --panel:#0f172a; --panel-2:#111c34; --card:#0e1a33;
@@ -380,7 +380,7 @@ hr.sep{border:0; border-top:1px solid var(--line); margin:12px 0}
       <div class="logo">🍚</div>
       <div>
         <div class="name">FPS Rice Register</div>
-        <div class="sub">FPS Code 0201 P100 · v1.5.0</div>
+        <div class="sub">FPS Code 0201 P100 · v1.4.0</div>
       </div>
     </div>
 
@@ -450,7 +450,7 @@ hr.sep{border:0; border-top:1px solid var(--line); margin:12px 0}
 
 <script>
 /* ================================================================
-   FPS Rice Register — v1.5.0
+   FPS Rice Register — v1.4.0
    Vanilla JS · IndexedDB · offline-first · Google Apps Script sync
    Bulletproof white-on-black printing.
    ================================================================ */
@@ -469,34 +469,48 @@ const MONTHS = [
   {key:'2027-02', label:'February 2027',  y:2027, m:2},
   {key:'2027-03', label:'March 2027',     y:2027, m:3},
 ];
-const FPS_CODE = '0201 P100'; // legacy fallback; editable dealerCode is used everywhere in the live UI/prints
-const PROFILE_DEFAULTS = {
-  dealerName: '',
-  dealerCode: FPS_CODE,
-  dealerPlace: ''
+const FPS_CODE = '0201 P100';
+const DEFAULT_GAS_URLS = {
+  NFSA: 'https://script.google.com/macros/s/AKfycbxeniHjSSfYcQlJbUIU7IIvZDrdB6_PKBY3O5qdpOxzhCWZQZdPFHotsSCZqgL98NpR/exec',
+  CMAY: 'https://script.google.com/macros/s/AKfycbyjmBtj5l860V7gEDiYuZSFurWODK9y8GtfMINdHdv7gCMoh1LHO9Y7g0fHwVHuVMkwBg/exec'
 };
-const GAS_SETTING_KEYS = { NFSA:'gasUrlNFSA', CMAY:'gasUrlCMAY' };
+let appProfile = { dealerName:'', fpsCode:FPS_CODE, place:'' };
 
-async function getGasUrl(register = state.register){
-  const key = GAS_SETTING_KEYS[register] || GAS_SETTING_KEYS.NFSA;
-  const specific = await getSetting(key, '');
+async function getGasUrl(register){
+  const r = REGISTERS.includes(register) ? register : state.register;
+  const specific = await getSetting('gasUrl_' + r, '');
   if (specific) return specific;
-  // Backward compatibility: migrate the old single URL to NFSA only.
-  if (register === 'NFSA') return await getSetting('gasUrl', '');
-  return '';
+
+  /* Migrate the old single-URL setting to NFSA only. */
+  if (r === 'NFSA'){
+    const legacy = await getSetting('gasUrl', '');
+    if (legacy) return legacy;
+  }
+
+  return DEFAULT_GAS_URLS[r] || '';
 }
-async function getProfile(){
-  return {
-    dealerName: await getSetting('dealerName', PROFILE_DEFAULTS.dealerName),
-    dealerCode: await getSetting('dealerCode', PROFILE_DEFAULTS.dealerCode),
-    dealerPlace: await getSetting('dealerPlace', PROFILE_DEFAULTS.dealerPlace)
+
+async function saveConnectionUrl(register, value){
+  const r = REGISTERS.includes(register) ? register : state.register;
+  await setSetting('gasUrl_' + r, (value || '').trim());
+  return getGasUrl(r);
+}
+
+async function loadProfile(){
+  appProfile = {
+    dealerName: await getSetting('dealerName', ''),
+    fpsCode: await getSetting('fpsCode', FPS_CODE),
+    place: await getSetting('place', '')
   };
+  if (!appProfile.fpsCode) appProfile.fpsCode = FPS_CODE;
+  return appProfile;
 }
-function escAttr(v){
-  return String(v ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-function escHtml(v){
-  return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+async function saveProfileLocal(profile){
+  await setSetting('dealerName', (profile.dealerName || '').trim());
+  await setSetting('fpsCode', (profile.fpsCode || '').trim() || FPS_CODE);
+  await setSetting('place', (profile.place || '').trim());
+  return loadProfile();
 }
 
 /* ----------------------------------------------------------------
@@ -759,40 +773,37 @@ async function trySync(opts={}){
 
     eligible.sort((a,b) => (a.at||0) - (b.at||0));
 
-    // IMPORTANT: NFSA and CMAY may use different Google Sheets / Web Apps.
-    // Never send a mixed-register batch to one endpoint.
-    const groups = new Map();
+    /*
+     * One app has two completely separate Google Sheet endpoints.
+     * Group the queue by register so NFSA records can never be sent
+     * to the CMAY endpoint (or vice versa).
+     */
+    const groups = {NFSA:[], CMAY:[]};
     for (const q of eligible){
-      const reg = q.entry?.register || state.register;
-      if (!groups.has(reg)) groups.set(reg, []);
-      groups.get(reg).push(q);
+      const reg = q.entry && q.entry.register;
+      if (groups[reg]) groups[reg].push(q);
+      else {
+        failed++;
+        skipped++;
+      }
     }
 
-    const profile = await getProfile();
+    for (const register of REGISTERS){
+      const group = groups[register];
+      if (!group.length) continue;
 
-    for (const [register, group] of groups.entries()){
       const url = await getGasUrl(register);
+
       if (!url){
-        for (const q of group){
-          const attempts = (q.attempts || 0) + 1;
-          await idbPut('syncQueue', {
-            ...q, attempts,
-            lastTriedAt: Date.now(),
-            nextRetryAt: Date.now() + backoffMs(attempts),
-            lastError: `${register} Apps Script URL not configured`
-          });
-        }
-        failed += group.length;
+        skipped += group.length;
         continue;
       }
 
       for (let i=0; i<group.length; i += SYNC_BATCH_SIZE){
         const batch = group.slice(i, i + SYNC_BATCH_SIZE);
+
         const rows = batch.map(q => q.entry).map(e => ({
           ...e,
-          dealerName: profile.dealerName,
-          dealerCode: profile.dealerCode,
-          dealerPlace: profile.dealerPlace,
           referenceSheet: refSheetName(e.register, 'scheme', e.scheme),
           referencePrintSheet: refSheetName(e.register, 'print', e.scheme),
           referenceMasterSheet: refSheetName(e.register, 'master'),
@@ -810,9 +821,6 @@ async function trySync(opts={}){
               action:'upsert',
               mode:'reference',
               register,
-              dealerName: profile.dealerName,
-              dealerCode: profile.dealerCode,
-              dealerPlace: profile.dealerPlace,
               rows,
               deviceId: DEVICE_ID
             })
@@ -821,12 +829,10 @@ async function trySync(opts={}){
           if (!res.ok) throw new Error('HTTP '+res.status);
 
           const text = await res.text();
-          try {
-            const j = JSON.parse(text);
-            if (j && j.ok === false) throw new Error(j.err || 'server rejected');
-            if (j && j.success === false) throw new Error(j.error || 'server rejected');
-          } catch(parseErr) {
-            if (parseErr && /server rejected/i.test(parseErr.message || '')) throw parseErr;
+          const j = JSON.parse(text);
+
+          if (j && j.ok === false){
+            throw new Error(j.error || j.err || 'server rejected');
           }
 
           ok = true;
@@ -850,7 +856,8 @@ async function trySync(opts={}){
         } else {
           for (const q of batch){
             const attempts = (q.attempts || 0) + 1;
-            const delay    = backoffMs(attempts);
+            const delay = backoffMs(attempts);
+
             await idbPut('syncQueue', {
               ...q,
               attempts,
@@ -861,14 +868,16 @@ async function trySync(opts={}){
           }
 
           failed += batch.length;
-          // Keep trying the other register group even if this batch fails.
+          /* Continue with the other register rather than blocking it. */
+          break;
         }
       }
     }
 
-    if (sent && !failed)  toast(`Synced ${sent} record(s) to reference-format Google Sheets`,'ok');
-    if (sent && failed)   toast(`Synced ${sent}; ${failed} will retry`,'warn');
-    if (!sent && failed)  toast(`Sync failed for ${failed} — will retry`,'warn');
+    if (sent && !failed) toast(`Synced ${sent} record(s) to reference-format Google Sheets`,'ok');
+    if (sent && failed)  toast(`Synced ${sent}, ${failed} will retry`,'warn');
+    if (!sent && failed) toast(`Sync failed for ${failed} — will retry`,'warn');
+    if (!sent && !failed && skipped) updateSyncBadge();
 
   } finally {
     _syncing = false;
@@ -878,6 +887,7 @@ async function trySync(opts={}){
 
   return {sent, failed, skipped};
 }
+
 function scheduleNextSyncTick(){
   if (_syncTimer) clearTimeout(_syncTimer);
   _syncTimer = setTimeout(async ()=>{
@@ -962,20 +972,25 @@ async function pullAllReferenceData(){
   updateSyncBadge();
 }
 
-async function pingBackend(register = state.register){
+async function pingBackend(register=state.register){
   const url = await getGasUrl(register);
-  if (!url){ toast(`${register} Apps Script URL is not configured`,'warn'); return false; }
+  if (!url){
+    toast('Set the ' + register + ' Apps Script URL first','warn');
+    return false;
+  }
   try {
     const r = await fetch(url + (url.includes('?')?'&':'?') + 'action=ping', {method:'GET'});
     if (!r.ok) throw new Error('HTTP '+r.status);
-    const t = await r.text();
-    toast(`${register} backend OK: ` + t.slice(0,60),'ok');
+    const j = await r.json();
+    if (j && j.ok === false) throw new Error(j.error || 'Backend rejected request');
+    toast(register + ' backend connection successful','ok');
     return true;
   } catch (err){
-    toast(`${register} backend unreachable: ` + err.message,'err', 3500);
+    toast(register + ' backend unreachable: ' + err.message,'err', 3500);
     return false;
   }
 }
+
 async function updateSyncBadge(){
   const badge = $('#syncBadge');
   if (!badge) return;
@@ -984,10 +999,10 @@ async function updateSyncBadge(){
   const nowMs = Date.now();
   const waiting = queue.filter(q => q.nextRetryAt && q.nextRetryAt > nowMs);
   const oldest = queue.reduce((m,q) => (!m || q.at < m.at) ? q : m, null);
-  let tip = `${state.register} connection`;
+  let tip = '';
   if (oldest){
     const age = Math.round((nowMs - oldest.at)/1000);
-    tip += `\nOldest pending: ${new Date(oldest.at).toLocaleString()} (${age}s ago)`;
+    tip = `Oldest pending: ${new Date(oldest.at).toLocaleString()} (${age}s ago)`;
     if (oldest.lastError) tip += `\nLast error: ${oldest.lastError}`;
   }
   if (!navigator.onLine){
@@ -995,7 +1010,7 @@ async function updateSyncBadge(){
     badge.textContent = queue.length ? `🔴 Offline • ${queue.length} pending` : '🔴 Offline • Local Only';
   } else if (!url){
     badge.className = 'badge pend';
-    badge.textContent = `⚙️ ${state.register} Sync not configured`;
+    badge.textContent = '⚙️ Sync not configured';
   } else if (_syncing){
     badge.className = 'badge pend';
     badge.textContent = `🔄 Syncing ${queue.length}…`;
@@ -1005,12 +1020,13 @@ async function updateSyncBadge(){
     badge.textContent = `🟠 Online • ${queue.length} ${label}`;
   } else {
     badge.className = 'badge on';
-    badge.textContent = `🟢 Online • ${state.register} Synced`;
+    badge.textContent = '🟢 Online • Synced';
   }
   badge.title = tip;
 }
+
 /* ---------------- Save / edit entries ---------------- */
-async function saveEntry({register, scheme, date, opening, openingMode, received, sold, remarks}){
+async function saveEntry({register, scheme, date, opening, openingMode, received, sold, remarks, dealerName='', fpsCode='', place=''}){
   if (!register || !scheme || !date) throw new Error('Missing register/scheme/date');
   received = num(received); sold = num(sold);
   if (received < 0) throw new Error('Received cannot be negative');
@@ -1021,6 +1037,14 @@ async function saveEntry({register, scheme, date, opening, openingMode, received
   } else {
     opening = null;
   }
+
+  if (!dealerName && !fpsCode && !place){
+    const p = await loadProfile();
+    dealerName = p.dealerName;
+    fpsCode = p.fpsCode;
+    place = p.place;
+  }
+
   const key = makeKey(register, scheme, date);
   const now = new Date().toISOString();
   const existing = await getEntry(register, scheme, date);
@@ -1029,6 +1053,9 @@ async function saveEntry({register, scheme, date, opening, openingMode, received
     key, register, scheme, date, month: monthKey(date),
     opening, openingMode, received, sold,
     remarks: (remarks || '').toString().slice(0,300),
+    dealerName: (dealerName || '').toString().slice(0,200),
+    fpsCode: (fpsCode || FPS_CODE).toString().slice(0,80),
+    place: (place || '').toString().slice(0,200),
     createdAt: existing ? existing.createdAt : now,
     updatedAt: now,
     deviceId: DEVICE_ID,
@@ -1096,7 +1123,7 @@ function setRegister(reg){
   badge.className = 'badge ' + (reg==='NFSA'?'nfsa':'cmay');
   badge.textContent = reg + ' RICE REGISTER';
   localStorage.setItem('fps-register', reg);
-  applyProfileToShell();
+  updateSyncBadge();
   go(state.page);
 }
 function setScheme(s){
@@ -1593,7 +1620,10 @@ async function renderLedger(root){
 }
 
 async function renderPrint(root){
-  const profile = await getProfile();
+  const profile = await loadProfile();
+  const printFpsCode = profile.fpsCode || FPS_CODE;
+  const printDealer = profile.dealerName || '';
+  const printPlace = profile.place || '';
   const monthOpts = MONTHS.map(m => `<option value="${m.key}" ${m.key===state.monthKey?'selected':''}>${m.label}</option>`).join('');
   root.innerHTML = `
     <div class="card no-print">
@@ -1601,7 +1631,7 @@ async function renderPrint(root){
         <label>Month <select id="prMon"><option value="">Full period (Sep 2026 – Mar 2027)</option>${monthOpts}</select></label>
         <label>Scheme <select id="prSch">${SCHEMES.map(s=>`<option ${s===state.scheme?'selected':''}>${s}</option>`).join('')}</select></label>
         <button class="btn primary" id="prBtn">🖨️ Print</button>
-        <span class="help">A4 print layout · FPS Code ${escHtml(profile.dealerCode || FPS_CODE)} · white background + black text guaranteed.</span>
+        <span class="help">A4 print layout · FPS Code ${printFpsCode} · white background + black text guaranteed.</span>
       </div>
     </div>
     <div id="prBody"></div>
@@ -1625,7 +1655,7 @@ async function renderPrint(root){
       <div class="card">
         <div class="print-header">
           <h2>FPS STOCK REGISTER</h2>
-          <div><strong>DEALER</strong> — ${escHtml(profile.dealerName)} &nbsp;|&nbsp; <strong>FPS CODE NO.</strong> — ${escHtml(profile.dealerCode || FPS_CODE)} &nbsp;|&nbsp; <strong>PLACE</strong> — ${escHtml(profile.dealerPlace)} &nbsp;|&nbsp; <strong>SCHEME</strong> — ${state.register} RICE — ${scheme}</div>
+          <div><strong>FPS CODE NO.</strong> — ${printFpsCode} &nbsp;|&nbsp; <strong>DEALER</strong> — ${printDealer} &nbsp;|&nbsp; <strong>PLACE</strong> — ${printPlace} &nbsp;|&nbsp; <strong>SCHEME</strong> — ${state.register} RICE — ${scheme}</div>
         </div>
         <div class="print-meta">
           <div><strong>MONTH / YEAR:</strong> ${monthLabel}</div>
@@ -1999,7 +2029,6 @@ async function renderRefReceived(root){
 }
 
 async function renderRefPrint(scheme){
-  const profile = await getProfile();
   const root = $('#pageRoot');
   const series = calcSeries(await getEntriesFor(state.register, scheme));
   const totRecv = sumOver(series,'received'), totSold = sumOver(series,'sold');
@@ -2019,7 +2048,7 @@ async function renderRefPrint(scheme){
     <div class="card" style="margin-top:12px">
       <div class="print-header">
         <div><strong>MONTH/YEAR —</strong> SEPTEMBER 2026 - MARCH 2027 &nbsp;&nbsp; <strong>PAGE NO —</strong> _____</div>
-        <div><strong>DEALER</strong> — ${escHtml(profile.dealerName)} &nbsp;&nbsp; <strong>FPS CODE NO.</strong> — ${escHtml(profile.dealerCode || FPS_CODE)} &nbsp;&nbsp; <strong>PLACE</strong> — ${escHtml(profile.dealerPlace)} &nbsp;&nbsp; <strong>SCHEME —</strong> ${state.register} RICE — ${scheme}</div>
+        <div><strong>FPS STOCK REGISTER / FPS CODE NO.</strong> — ${printFpsCode} &nbsp;&nbsp; <strong>SCHEME —</strong> ${state.register} RICE — ${scheme}</div>
       </div>
       <div class="table-wrap">
       <table class="data print-reg">
@@ -2101,7 +2130,7 @@ async function renderSyncQueue(root){
     </div>
   `;
   $('#sqOnline').textContent = navigator.onLine ? '🟢 Online' : '🔴 Offline';
-  $('#sqUrl').textContent = url ? '⚙️ Sync configured' : '⚙️ Sync not configured';
+  $('#sqUrl').textContent = url ? ('⚙️ ' + state.register + ' Sync configured') : ('⚙️ ' + state.register + ' Sync not configured');
   $('#sqSyncNow').addEventListener('click', async ()=>{
     if (!url){ toast('Set the Apps Script URL in Settings first','warn'); return; }
     if (!navigator.onLine){ toast('You are offline — will retry automatically','warn'); return; }
@@ -2251,50 +2280,63 @@ async function renderBackup(root){
 }
 
 async function renderSettings(root){
-  const nfsaUrl = await getSetting('gasUrlNFSA', await getSetting('gasUrl',''));
-  const cmayUrl = await getSetting('gasUrlCMAY','');
-  const dealerName = await getSetting('dealerName', PROFILE_DEFAULTS.dealerName);
-  const dealerCode = await getSetting('dealerCode', PROFILE_DEFAULTS.dealerCode);
-  const dealerPlace = await getSetting('dealerPlace', PROFILE_DEFAULTS.dealerPlace);
+  const nfsaUrl = await getGasUrl('NFSA');
+  const cmayUrl = await getGasUrl('CMAY');
+  const profile = await loadProfile();
 
   root.innerHTML = `
     <div class="card">
       <h2>Settings</h2>
       <div class="form">
+
         <div class="row">
           <label>NFSA Google Apps Script Web App URL</label>
           <div class="field">
-            <input type="url" id="stUrlNFSA" placeholder="https://script.google.com/macros/s/…/exec" value="${escAttr(nfsaUrl)}" />
-            <div class="help">Used only for the NFSA Google Sheet. Public /exec URL of the deployed Apps Script.</div>
+            <input type="url" id="stUrlNFSA"
+              placeholder="https://script.google.com/macros/s/…/exec"
+              value="${(nfsaUrl||'').replace(/"/g,'&quot;')}" />
+            <div class="help">
+              NFSA data is sent only to the NFSA Google Sheet.
+            </div>
           </div>
         </div>
 
         <div class="row">
           <label>CMAY Google Apps Script Web App URL</label>
           <div class="field">
-            <input type="url" id="stUrlCMAY" placeholder="https://script.google.com/macros/s/…/exec" value="${escAttr(cmayUrl)}" />
-            <div class="help">Used only for the CMAY Google Sheet. This can be a different Apps Script deployment.</div>
+            <input type="url" id="stUrlCMAY"
+              placeholder="https://script.google.com/macros/s/…/exec"
+              value="${(cmayUrl||'').replace(/"/g,'&quot;')}" />
+            <div class="help">
+              CMAY data is sent only to the separate CMAY Google Sheet.
+            </div>
           </div>
         </div>
 
         <div class="row">
           <label>Dealer / FPS Name</label>
           <div class="field">
-            <input type="text" id="stDealerName" placeholder="Dealer / Shop Name" value="${escAttr(dealerName)}" />
+            <input type="text" id="stDealerName"
+              placeholder="Enter dealer / FPS name"
+              value="${(profile.dealerName||'').replace(/"/g,'&quot;')}" />
           </div>
         </div>
 
         <div class="row">
-          <label>Dealer / FPS Code</label>
+          <label>FPS Code</label>
           <div class="field">
-            <input type="text" id="stDealerCode" placeholder="0201 P100" value="${escAttr(dealerCode)}" />
+            <input type="text" id="stFpsCode"
+              placeholder="${FPS_CODE}"
+              value="${(profile.fpsCode||FPS_CODE).replace(/"/g,'&quot;')}" />
           </div>
         </div>
 
         <div class="row">
           <label>Place</label>
           <div class="field">
-            <input type="text" id="stDealerPlace" placeholder="Village / Town / Block / District" value="${escAttr(dealerPlace)}" />
+            <input type="text" id="stPlace"
+              placeholder="Enter place"
+              value="${(profile.place||'').replace(/"/g,'&quot;')}" />
           </div>
         </div>
 
@@ -2306,31 +2348,29 @@ async function renderSettings(root){
             <button class="btn primary" id="stSync">↻ Sync Now</button>
           </div>
         </div>
-        <div class="row"><label></label>
-          <div class="help">Dealer name, code and place are saved locally and used on printable registers and sync payloads. NFSA and CMAY connections remain completely separate.</div>
-        </div>
       </div>
     </div>
 
     <div class="card" style="margin-top:12px">
       <h3>Google Apps Script — reference-format backend</h3>
-      <p class="help">The backend must be deployed separately for each Google Sheet: one Web App for NFSA and one Web App for CMAY. The current interface sends the selected register to its own endpoint.</p>
-      <details><summary class="btn sm">Show script</summary>
-<pre class="calc-box" style="white-space:pre; max-height:420px; overflow:auto">/** Reference-format backend
- *
- * NFSA and CMAY use separate Google Sheets and separate Web App deployments.
- * Each deployment must be bound to its own Google Sheet.
- *
- * Deploy:
- * Extensions → Apps Script → paste backend → Deploy →
- * New deployment → Web App → Execute as Me → Anyone.
- *
- * The frontend selects the correct /exec URL from Settings:
- *   NFSA Apps Script URL → NFSA Sheet
- *   CMAY Apps Script URL → CMAY Sheet
- *
- * Dealer Name / Code / Place are sent with every sync payload.
- */</pre></details>
+      <p class="help">
+        NFSA and CMAY use separate Google Sheets. Each endpoint updates the
+        existing reference-format tabs directly: <strong>DASHBOARD</strong>,
+        <strong>MASTER LIST</strong>, <strong>AAY</strong>, <strong>PHH</strong>,
+        <strong>SFSS</strong>, <strong>ALL RECEIVED AMMOUNT</strong> and the
+        corresponding print sheets.
+      </p>
+      <details><summary class="btn sm">Show script instructions</summary>
+        <div class="calc-box">
+          NFSA: use the NFSA Apps Script in your NFSA template Google Sheet.
+
+          CMAY: use the CMAY Apps Script in your separate CMAY template Google Sheet.
+
+          Both endpoints must be deployed as Web Apps with:
+          Execute as: Me
+          Who has access: Anyone
+        </div>
+      </details>
     </div>
 
     <div class="card" style="margin-top:12px">
@@ -2338,39 +2378,69 @@ async function renderSettings(root){
       <ul>
         <li>Version: <strong>1.5.0</strong></li>
         <li>Device ID: <span class="mono">${DEVICE_ID}</span></li>
-        <li>Registers: <strong>NFSA</strong> and <strong>CMAY</strong> — separate Google Sheets / endpoints.</li>
-        <li>Card schemes: <strong>AAY</strong>, <strong>PHH</strong>, <strong>SFSS</strong>.</li>
+        <li>Registers: <strong>NFSA</strong> and <strong>CMAY</strong> — completely separate Google Sheets.</li>
         <li>Accounting period: September 2026 – March 2027.</li>
         <li>PWA: works offline once loaded; installable from browser menu.</li>
-        <li>Printing: guaranteed white background + black text.</li>
+        <li>Printing: white background + black text.</li>
       </ul>
     </div>
   `;
 
   $('#stSave').addEventListener('click', async ()=>{
-    const nfsa = ($('#stUrlNFSA').value || '').trim();
-    const cmay = ($('#stUrlCMAY').value || '').trim();
-    const name = ($('#stDealerName').value || '').trim();
-    const code = ($('#stDealerCode').value || '').trim() || PROFILE_DEFAULTS.dealerCode;
-    const place = ($('#stDealerPlace').value || '').trim();
+    try {
+      await saveConnectionUrl(
+        'NFSA',
+        $('#stUrlNFSA').value || ''
+      );
 
-    await setSetting('gasUrlNFSA', nfsa);
-    await setSetting('gasUrlCMAY', cmay);
-    await setSetting('gasUrl', nfsa); // backward compatibility with old local configuration
-    await setSetting('dealerName', name);
-    await setSetting('dealerCode', code);
-    await setSetting('dealerPlace', place);
+      await saveConnectionUrl(
+        'CMAY',
+        $('#stUrlCMAY').value || ''
+      );
 
-    toast('Settings saved','ok');
-    updateSyncBadge();
-    // Refresh current page so dealer details appear immediately.
-    await go(state.page);
+      const p = await saveProfileLocal({
+        dealerName: $('#stDealerName').value || '',
+        fpsCode: $('#stFpsCode').value || FPS_CODE,
+        place: $('#stPlace').value || ''
+      });
+
+      /*
+       * Try to push the dealer profile to both backends when online.
+       * Failure here does not block local saving/offline work.
+       */
+      if (navigator.onLine){
+        for (const reg of REGISTERS){
+          const url = await getGasUrl(reg);
+          if (!url) continue;
+          try {
+            await fetch(url, {
+              method:'POST',
+              headers:{'Content-Type':'text/plain;charset=utf-8'},
+              body: JSON.stringify({
+                action:'profile',
+                register: reg,
+                dealerName: p.dealerName,
+                fpsCode: p.fpsCode,
+                place: p.place
+              })
+            });
+          } catch(_){}
+        }
+      }
+
+      toast('NFSA + CMAY settings saved','ok');
+      updateSyncBadge();
+
+    } catch(err){
+      toast('Could not save settings: ' + err.message,'err',3500);
+    }
   });
 
-  $('#stTestNFSA').addEventListener('click', ()=> pingBackend('NFSA'));
-  $('#stTestCMAY').addEventListener('click', ()=> pingBackend('CMAY'));
-  $('#stSync').addEventListener('click', ()=> trySync({force:true}));
+  $('#stTestNFSA').addEventListener('click', ()=>pingBackend('NFSA'));
+  $('#stTestCMAY').addEventListener('click', ()=>pingBackend('CMAY'));
+  $('#stSync').addEventListener('click', ()=>trySync({force:true}));
 }
+
 /* ---------------- Download helper ---------------- */
 function downloadBlob(content, filename, mime){
   const blob = new Blob([content], {type:mime});
@@ -2382,14 +2452,6 @@ function downloadBlob(content, filename, mime){
 }
 
 /* ---------------- Boot ---------------- */
-async function applyProfileToShell(){
-  const p = await getProfile();
-  const sub = $('.brand .sub');
-  if (sub){
-    const bits = [p.dealerName, p.dealerCode, p.dealerPlace].filter(Boolean);
-    sub.textContent = bits.length ? bits.join(' · ') : `FPS Code ${FPS_CODE} · v1.5.0`;
-  }
-}
 function wireGlobal(){
   $$('#nav a').forEach(a => a.addEventListener('click', ()=> go(a.dataset.page)));
   $$('#bottomNav a').forEach(a => a.addEventListener('click', ()=> go(a.dataset.page)));
@@ -2430,6 +2492,7 @@ function wireGlobal(){
 }
 
 async function boot(){
+  await loadProfile();
   const savedReg = localStorage.getItem('fps-register');
   const savedSch = localStorage.getItem('fps-scheme');
   if (REGISTERS.includes(savedReg)) state.register = savedReg;
@@ -2439,7 +2502,6 @@ async function boot(){
   setScheme(state.scheme);
   wireGlobal();
   updateSyncBadge();
-  await applyProfileToShell();
   await go('dashboard');
 
   if ('serviceWorker' in navigator){
