@@ -9,7 +9,7 @@
 <link rel="icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='12' fill='%230f172a'/><text x='32' y='42' font-size='36' text-anchor='middle'>🍚</text></svg>" />
 <style>
 /* =============================================================
-   FPS Rice Register — global styles  (v1.4.0)
+   FPS Rice Register — global styles  (v1.5.0)
    ============================================================= */
 :root{
   --bg:#0b1220; --panel:#0f172a; --panel-2:#111c34; --card:#0e1a33;
@@ -380,7 +380,7 @@ hr.sep{border:0; border-top:1px solid var(--line); margin:12px 0}
       <div class="logo">🍚</div>
       <div>
         <div class="name">FPS Rice Register</div>
-        <div class="sub">FPS Code 0201 P100 · v1.4.0</div>
+        <div class="sub">FPS Code 0201 P100 · v1.5.0</div>
       </div>
     </div>
 
@@ -450,7 +450,7 @@ hr.sep{border:0; border-top:1px solid var(--line); margin:12px 0}
 
 <script>
 /* ================================================================
-   FPS Rice Register — v1.4.0
+   FPS Rice Register — v1.5.0
    Vanilla JS · IndexedDB · offline-first · Google Apps Script sync
    Bulletproof white-on-black printing.
    ================================================================ */
@@ -469,7 +469,35 @@ const MONTHS = [
   {key:'2027-02', label:'February 2027',  y:2027, m:2},
   {key:'2027-03', label:'March 2027',     y:2027, m:3},
 ];
-const FPS_CODE = '0201 P100';
+const FPS_CODE = '0201 P100'; // legacy fallback; editable dealerCode is used everywhere in the live UI/prints
+const PROFILE_DEFAULTS = {
+  dealerName: '',
+  dealerCode: FPS_CODE,
+  dealerPlace: ''
+};
+const GAS_SETTING_KEYS = { NFSA:'gasUrlNFSA', CMAY:'gasUrlCMAY' };
+
+async function getGasUrl(register = state.register){
+  const key = GAS_SETTING_KEYS[register] || GAS_SETTING_KEYS.NFSA;
+  const specific = await getSetting(key, '');
+  if (specific) return specific;
+  // Backward compatibility: migrate the old single URL to NFSA only.
+  if (register === 'NFSA') return await getSetting('gasUrl', '');
+  return '';
+}
+async function getProfile(){
+  return {
+    dealerName: await getSetting('dealerName', PROFILE_DEFAULTS.dealerName),
+    dealerCode: await getSetting('dealerCode', PROFILE_DEFAULTS.dealerCode),
+    dealerPlace: await getSetting('dealerPlace', PROFILE_DEFAULTS.dealerPlace)
+  };
+}
+function escAttr(v){
+  return String(v ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function escHtml(v){
+  return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
 
 /* ----------------------------------------------------------------
    Reference workbook targets.
@@ -712,8 +740,6 @@ function backoffMs(attempts){
 }
 
 async function trySync(opts={}){
-  const url = await getSetting('gasUrl', '');
-  if (!url) return {sent:0, failed:0, skipped:0, reason:'no-url'};
   if (!navigator.onLine) return {sent:0, failed:0, skipped:0, reason:'offline'};
   if (_syncing) return {sent:0, failed:0, skipped:0, reason:'already-running'};
 
@@ -733,81 +759,115 @@ async function trySync(opts={}){
 
     eligible.sort((a,b) => (a.at||0) - (b.at||0));
 
-    for (let i=0; i<eligible.length; i += SYNC_BATCH_SIZE){
-      const batch = eligible.slice(i, i + SYNC_BATCH_SIZE);
-      const rows = batch.map(q => q.entry).map(e => ({
-        ...e,
-        referenceSheet: refSheetName(e.register, 'scheme', e.scheme),
-        referencePrintSheet: refSheetName(e.register, 'print', e.scheme),
-        referenceMasterSheet: refSheetName(e.register, 'master'),
-        referenceReceivedSheet: refSheetName(e.register, 'received'),
-        referenceDashboardSheet: refSheetName(e.register, 'dashboard')
-      }));
+    // IMPORTANT: NFSA and CMAY may use different Google Sheets / Web Apps.
+    // Never send a mixed-register batch to one endpoint.
+    const groups = new Map();
+    for (const q of eligible){
+      const reg = q.entry?.register || state.register;
+      if (!groups.has(reg)) groups.set(reg, []);
+      groups.get(reg).push(q);
+    }
 
-      let ok = false, errMsg = '';
+    const profile = await getProfile();
 
-      try {
-        const res = await fetch(url, {
-          method:'POST',
-          headers:{'Content-Type':'text/plain;charset=utf-8'},
-          body: JSON.stringify({
-            action:'upsert',
-            mode:'reference',
-            rows,
-            deviceId: DEVICE_ID
-          })
-        });
-
-        if (!res.ok) throw new Error('HTTP '+res.status);
-
-        const text = await res.text();
-        try {
-          const j = JSON.parse(text);
-          if (j && j.ok === false) throw new Error(j.err || 'server rejected');
-        } catch(parseErr) {
-          /* Preserve backwards compatibility with APIs that return plain text. */
-          if (parseErr && /server rejected/i.test(parseErr.message || '')) throw parseErr;
-        }
-
-        ok = true;
-      } catch (err){
-        errMsg = err && err.message || String(err);
-      }
-
-      if (ok){
-        for (const q of batch) await idbDelete('syncQueue', q.qid);
-
-        for (const r of batch.map(q => q.entry)){
-          const cur = await idbGet('entries', r.id);
-          if (cur){
-            cur.syncStatus = 'synced';
-            cur.lastSyncedAt = new Date().toISOString();
-            await idbPut('entries', cur);
-          }
-        }
-
-        sent += rows.length;
-      } else {
-        for (const q of batch){
+    for (const [register, group] of groups.entries()){
+      const url = await getGasUrl(register);
+      if (!url){
+        for (const q of group){
           const attempts = (q.attempts || 0) + 1;
-          const delay    = backoffMs(attempts);
-
           await idbPut('syncQueue', {
-            ...q,
-            attempts,
+            ...q, attempts,
             lastTriedAt: Date.now(),
-            nextRetryAt: Date.now() + delay,
-            lastError: errMsg.slice(0, 240)
+            nextRetryAt: Date.now() + backoffMs(attempts),
+            lastError: `${register} Apps Script URL not configured`
           });
         }
+        failed += group.length;
+        continue;
+      }
 
-        failed += batch.length;
-        break;
+      for (let i=0; i<group.length; i += SYNC_BATCH_SIZE){
+        const batch = group.slice(i, i + SYNC_BATCH_SIZE);
+        const rows = batch.map(q => q.entry).map(e => ({
+          ...e,
+          dealerName: profile.dealerName,
+          dealerCode: profile.dealerCode,
+          dealerPlace: profile.dealerPlace,
+          referenceSheet: refSheetName(e.register, 'scheme', e.scheme),
+          referencePrintSheet: refSheetName(e.register, 'print', e.scheme),
+          referenceMasterSheet: refSheetName(e.register, 'master'),
+          referenceReceivedSheet: refSheetName(e.register, 'received'),
+          referenceDashboardSheet: refSheetName(e.register, 'dashboard')
+        }));
+
+        let ok = false, errMsg = '';
+
+        try {
+          const res = await fetch(url, {
+            method:'POST',
+            headers:{'Content-Type':'text/plain;charset=utf-8'},
+            body: JSON.stringify({
+              action:'upsert',
+              mode:'reference',
+              register,
+              dealerName: profile.dealerName,
+              dealerCode: profile.dealerCode,
+              dealerPlace: profile.dealerPlace,
+              rows,
+              deviceId: DEVICE_ID
+            })
+          });
+
+          if (!res.ok) throw new Error('HTTP '+res.status);
+
+          const text = await res.text();
+          try {
+            const j = JSON.parse(text);
+            if (j && j.ok === false) throw new Error(j.err || 'server rejected');
+            if (j && j.success === false) throw new Error(j.error || 'server rejected');
+          } catch(parseErr) {
+            if (parseErr && /server rejected/i.test(parseErr.message || '')) throw parseErr;
+          }
+
+          ok = true;
+        } catch (err){
+          errMsg = err && err.message || String(err);
+        }
+
+        if (ok){
+          for (const q of batch) await idbDelete('syncQueue', q.qid);
+
+          for (const r of batch.map(q => q.entry)){
+            const cur = await idbGet('entries', r.id);
+            if (cur){
+              cur.syncStatus = 'synced';
+              cur.lastSyncedAt = new Date().toISOString();
+              await idbPut('entries', cur);
+            }
+          }
+
+          sent += rows.length;
+        } else {
+          for (const q of batch){
+            const attempts = (q.attempts || 0) + 1;
+            const delay    = backoffMs(attempts);
+            await idbPut('syncQueue', {
+              ...q,
+              attempts,
+              lastTriedAt: Date.now(),
+              nextRetryAt: Date.now() + delay,
+              lastError: errMsg.slice(0, 240)
+            });
+          }
+
+          failed += batch.length;
+          // Keep trying the other register group even if this batch fails.
+        }
       }
     }
 
     if (sent && !failed)  toast(`Synced ${sent} record(s) to reference-format Google Sheets`,'ok');
-    if (sent && failed)   toast(`Synced ${sent}, ${failed} will retry`,'warn');
+    if (sent && failed)   toast(`Synced ${sent}; ${failed} will retry`,'warn');
     if (!sent && failed)  toast(`Sync failed for ${failed} — will retry`,'warn');
 
   } finally {
@@ -818,7 +878,6 @@ async function trySync(opts={}){
 
   return {sent, failed, skipped};
 }
-
 function scheduleNextSyncTick(){
   if (_syncTimer) clearTimeout(_syncTimer);
   _syncTimer = setTimeout(async ()=>{
@@ -843,7 +902,7 @@ async function requestBackgroundSync(){
    workbook-format sheets.
    ---------------------------------------------------------------- */
 async function pullReferenceData(register, scheme){
-  const url = await getSetting('gasUrl','');
+  const url = await getGasUrl(register);
   if (!url || !navigator.onLine) return {loaded:0};
 
   try {
@@ -903,33 +962,32 @@ async function pullAllReferenceData(){
   updateSyncBadge();
 }
 
-async function pingBackend(){
-  const url = await getSetting('gasUrl', '');
-  if (!url){ toast('Set the Apps Script URL first','warn'); return false; }
+async function pingBackend(register = state.register){
+  const url = await getGasUrl(register);
+  if (!url){ toast(`${register} Apps Script URL is not configured`,'warn'); return false; }
   try {
     const r = await fetch(url + (url.includes('?')?'&':'?') + 'action=ping', {method:'GET'});
     if (!r.ok) throw new Error('HTTP '+r.status);
     const t = await r.text();
-    toast('Backend OK: ' + t.slice(0,60),'ok');
+    toast(`${register} backend OK: ` + t.slice(0,60),'ok');
     return true;
   } catch (err){
-    toast('Backend unreachable: ' + err.message,'err', 3500);
+    toast(`${register} backend unreachable: ` + err.message,'err', 3500);
     return false;
   }
 }
-
 async function updateSyncBadge(){
   const badge = $('#syncBadge');
   if (!badge) return;
   const queue = await idbAll('syncQueue');
-  const url = await getSetting('gasUrl', '');
+  const url = await getGasUrl(state.register);
   const nowMs = Date.now();
   const waiting = queue.filter(q => q.nextRetryAt && q.nextRetryAt > nowMs);
   const oldest = queue.reduce((m,q) => (!m || q.at < m.at) ? q : m, null);
-  let tip = '';
+  let tip = `${state.register} connection`;
   if (oldest){
     const age = Math.round((nowMs - oldest.at)/1000);
-    tip = `Oldest pending: ${new Date(oldest.at).toLocaleString()} (${age}s ago)`;
+    tip += `\nOldest pending: ${new Date(oldest.at).toLocaleString()} (${age}s ago)`;
     if (oldest.lastError) tip += `\nLast error: ${oldest.lastError}`;
   }
   if (!navigator.onLine){
@@ -937,7 +995,7 @@ async function updateSyncBadge(){
     badge.textContent = queue.length ? `🔴 Offline • ${queue.length} pending` : '🔴 Offline • Local Only';
   } else if (!url){
     badge.className = 'badge pend';
-    badge.textContent = '⚙️ Sync not configured';
+    badge.textContent = `⚙️ ${state.register} Sync not configured`;
   } else if (_syncing){
     badge.className = 'badge pend';
     badge.textContent = `🔄 Syncing ${queue.length}…`;
@@ -947,11 +1005,10 @@ async function updateSyncBadge(){
     badge.textContent = `🟠 Online • ${queue.length} ${label}`;
   } else {
     badge.className = 'badge on';
-    badge.textContent = '🟢 Online • Synced';
+    badge.textContent = `🟢 Online • ${state.register} Synced`;
   }
   badge.title = tip;
 }
-
 /* ---------------- Save / edit entries ---------------- */
 async function saveEntry({register, scheme, date, opening, openingMode, received, sold, remarks}){
   if (!register || !scheme || !date) throw new Error('Missing register/scheme/date');
@@ -1039,6 +1096,7 @@ function setRegister(reg){
   badge.className = 'badge ' + (reg==='NFSA'?'nfsa':'cmay');
   badge.textContent = reg + ' RICE REGISTER';
   localStorage.setItem('fps-register', reg);
+  applyProfileToShell();
   go(state.page);
 }
 function setScheme(s){
@@ -1535,6 +1593,7 @@ async function renderLedger(root){
 }
 
 async function renderPrint(root){
+  const profile = await getProfile();
   const monthOpts = MONTHS.map(m => `<option value="${m.key}" ${m.key===state.monthKey?'selected':''}>${m.label}</option>`).join('');
   root.innerHTML = `
     <div class="card no-print">
@@ -1542,7 +1601,7 @@ async function renderPrint(root){
         <label>Month <select id="prMon"><option value="">Full period (Sep 2026 – Mar 2027)</option>${monthOpts}</select></label>
         <label>Scheme <select id="prSch">${SCHEMES.map(s=>`<option ${s===state.scheme?'selected':''}>${s}</option>`).join('')}</select></label>
         <button class="btn primary" id="prBtn">🖨️ Print</button>
-        <span class="help">A4 print layout · FPS Code ${FPS_CODE} · white background + black text guaranteed.</span>
+        <span class="help">A4 print layout · FPS Code ${escHtml(profile.dealerCode || FPS_CODE)} · white background + black text guaranteed.</span>
       </div>
     </div>
     <div id="prBody"></div>
@@ -1566,7 +1625,7 @@ async function renderPrint(root){
       <div class="card">
         <div class="print-header">
           <h2>FPS STOCK REGISTER</h2>
-          <div><strong>FPS CODE NO.</strong> — ${FPS_CODE} &nbsp;|&nbsp; <strong>SCHEME</strong> — ${state.register} RICE — ${scheme}</div>
+          <div><strong>DEALER</strong> — ${escHtml(profile.dealerName)} &nbsp;|&nbsp; <strong>FPS CODE NO.</strong> — ${escHtml(profile.dealerCode || FPS_CODE)} &nbsp;|&nbsp; <strong>PLACE</strong> — ${escHtml(profile.dealerPlace)} &nbsp;|&nbsp; <strong>SCHEME</strong> — ${state.register} RICE — ${scheme}</div>
         </div>
         <div class="print-meta">
           <div><strong>MONTH / YEAR:</strong> ${monthLabel}</div>
@@ -1940,6 +1999,7 @@ async function renderRefReceived(root){
 }
 
 async function renderRefPrint(scheme){
+  const profile = await getProfile();
   const root = $('#pageRoot');
   const series = calcSeries(await getEntriesFor(state.register, scheme));
   const totRecv = sumOver(series,'received'), totSold = sumOver(series,'sold');
@@ -1959,7 +2019,7 @@ async function renderRefPrint(scheme){
     <div class="card" style="margin-top:12px">
       <div class="print-header">
         <div><strong>MONTH/YEAR —</strong> SEPTEMBER 2026 - MARCH 2027 &nbsp;&nbsp; <strong>PAGE NO —</strong> _____</div>
-        <div><strong>FPS STOCK REGISTER / FPS CODE NO.</strong> — ${FPS_CODE} &nbsp;&nbsp; <strong>SCHEME —</strong> ${state.register} RICE — ${scheme}</div>
+        <div><strong>DEALER</strong> — ${escHtml(profile.dealerName)} &nbsp;&nbsp; <strong>FPS CODE NO.</strong> — ${escHtml(profile.dealerCode || FPS_CODE)} &nbsp;&nbsp; <strong>PLACE</strong> — ${escHtml(profile.dealerPlace)} &nbsp;&nbsp; <strong>SCHEME —</strong> ${state.register} RICE — ${scheme}</div>
       </div>
       <div class="table-wrap">
       <table class="data print-reg">
@@ -2010,7 +2070,7 @@ async function renderRefPrint(scheme){
    ================================================================ */
 
 async function renderSyncQueue(root){
-  const url = await getSetting('gasUrl','');
+  const url = await getGasUrl(state.register);
   root.innerHTML = `
     <div class="card">
       <div class="row-flex">
@@ -2191,578 +2251,126 @@ async function renderBackup(root){
 }
 
 async function renderSettings(root){
-  const url = await getSetting('gasUrl','');
+  const nfsaUrl = await getSetting('gasUrlNFSA', await getSetting('gasUrl',''));
+  const cmayUrl = await getSetting('gasUrlCMAY','');
+  const dealerName = await getSetting('dealerName', PROFILE_DEFAULTS.dealerName);
+  const dealerCode = await getSetting('dealerCode', PROFILE_DEFAULTS.dealerCode);
+  const dealerPlace = await getSetting('dealerPlace', PROFILE_DEFAULTS.dealerPlace);
+
   root.innerHTML = `
     <div class="card">
       <h2>Settings</h2>
       <div class="form">
         <div class="row">
-          <label>Google Apps Script Web App URL</label>
+          <label>NFSA Google Apps Script Web App URL</label>
           <div class="field">
-            <input type="url" id="stUrl" placeholder="https://script.google.com/macros/s/…/exec" value="${(url||'').replace(/"/g,'&quot;')}" />
-            <div class="help">Not a secret — the public /exec URL of your deployed Apps Script. Deploy the script (below) as a Web App with "Anyone" access.</div>
+            <input type="url" id="stUrlNFSA" placeholder="https://script.google.com/macros/s/…/exec" value="${escAttr(nfsaUrl)}" />
+            <div class="help">Used only for the NFSA Google Sheet. Public /exec URL of the deployed Apps Script.</div>
           </div>
         </div>
+
+        <div class="row">
+          <label>CMAY Google Apps Script Web App URL</label>
+          <div class="field">
+            <input type="url" id="stUrlCMAY" placeholder="https://script.google.com/macros/s/…/exec" value="${escAttr(cmayUrl)}" />
+            <div class="help">Used only for the CMAY Google Sheet. This can be a different Apps Script deployment.</div>
+          </div>
+        </div>
+
+        <div class="row">
+          <label>Dealer / FPS Name</label>
+          <div class="field">
+            <input type="text" id="stDealerName" placeholder="Dealer / Shop Name" value="${escAttr(dealerName)}" />
+          </div>
+        </div>
+
+        <div class="row">
+          <label>Dealer / FPS Code</label>
+          <div class="field">
+            <input type="text" id="stDealerCode" placeholder="0201 P100" value="${escAttr(dealerCode)}" />
+          </div>
+        </div>
+
+        <div class="row">
+          <label>Place</label>
+          <div class="field">
+            <input type="text" id="stDealerPlace" placeholder="Village / Town / Block / District" value="${escAttr(dealerPlace)}" />
+          </div>
+        </div>
+
         <div class="row"><label></label>
           <div class="actions">
             <button class="btn ok" id="stSave">💾 Save</button>
-            <button class="btn" id="stTest">🔌 Test Connection</button>
+            <button class="btn" id="stTestNFSA">🔌 Test NFSA</button>
+            <button class="btn" id="stTestCMAY">🔌 Test CMAY</button>
             <button class="btn primary" id="stSync">↻ Sync Now</button>
           </div>
+        </div>
+        <div class="row"><label></label>
+          <div class="help">Dealer name, code and place are saved locally and used on printable registers and sync payloads. NFSA and CMAY connections remain completely separate.</div>
         </div>
       </div>
     </div>
 
     <div class="card" style="margin-top:12px">
-      <h3>Google Apps Script — paste into a script bound to your Sheet</h3>
-      <p class="help">The reference-format backend writes directly to separate copies of every workbook tab for <strong>NFSA</strong> and <strong>CMAY</strong>. Examples: <strong>NFSA_AAY</strong>, <strong>CMAY_AAY</strong>, <strong>NFSA_AAY PRINT</strong>, and the corresponding Master List / All Received Amount / Dashboard sheets.</p>
+      <h3>Google Apps Script — reference-format backend</h3>
+      <p class="help">The backend must be deployed separately for each Google Sheet: one Web App for NFSA and one Web App for CMAY. The current interface sends the selected register to its own endpoint.</p>
       <details><summary class="btn sm">Show script</summary>
-<pre class="calc-box" style="white-space:pre; max-height:420px; overflow:auto">/** FPS Rice Register — reference-format Google Apps Script backend
+<pre class="calc-box" style="white-space:pre; max-height:420px; overflow:auto">/** Reference-format backend
  *
- * This version writes directly into reference-format worksheet copies:
- *   NFSA_AAY, NFSA_PHH, NFSA_SFSS
- *   CMAY_AAY, CMAY_PHH, CMAY_SFSS
- *   ... plus per-register MASTER LIST, ALL RECEIVED AMMOUNT,
- *       DASHBOARD and print sheets.
+ * NFSA and CMAY use separate Google Sheets and separate Web App deployments.
+ * Each deployment must be bound to its own Google Sheet.
  *
  * Deploy:
- * Extensions → Apps Script → paste this file → Deploy →
+ * Extensions → Apps Script → paste backend → Deploy →
  * New deployment → Web App → Execute as Me → Anyone.
- */
-
-const PERIOD_MONTHS = [
-  {key:'2026-09', label:'September 2026', y:2026, m:9},
-  {key:'2026-10', label:'October 2026', y:2026, m:10},
-  {key:'2026-11', label:'November 2026', y:2026, m:11},
-  {key:'2026-12', label:'December 2026', y:2026, m:12},
-  {key:'2027-01', label:'January 2027',  y:2027, m:1},
-  {key:'2027-02', label:'February 2027', y:2027, m:2},
-  {key:'2027-03', label:'March 2027',     y:2027, m:3}
-];
-
-const REGISTERS = ['NFSA','CMAY'];
-const SCHEMES   = ['AAY','PHH','SFSS'];
-
-const BLOCKS = {
-  '2026-09': {opening:'B', receive:'C', total:'D', sold:'E', close:'F', startRow:3, totalRow:34},
-  '2026-10': {opening:'H', receive:'I', total:'J', sold:'K', close:'L', startRow:3, totalRow:34},
-  '2026-11': {opening:'N', receive:'O', total:'P', sold:'Q', close:'R', startRow:3, totalRow:34},
-  '2026-12': {opening:'T', receive:'U', total:'V', sold:'W', close:'X', startRow:3, totalRow:34},
-  '2027-01': {opening:'Z', receive:'AA', total:'AB', sold:'AC', close:'AD', startRow:3, totalRow:34},
-  '2027-02': {opening:'AF', receive:'AG', total:'AH', sold:'AI', close:'AJ', startRow:3, totalRow:34},
-  '2027-03': {opening:'AL', receive:'AM', total:'AN', sold:'AO', close:'AP', startRow:3, totalRow:34}
-};
-
-function ss_(){
-  return SpreadsheetApp.getActiveSpreadsheet();
-}
-
-function sheetName_(register, base){
-  return register + '_' + base;
-}
-
-function schemeSheet_(register, scheme){
-  return sheetName_(register, scheme);
-}
-
-function printSheet_(register, scheme){
-  return sheetName_(register, scheme + ' PRINT');
-}
-
-function masterSheet_(register){
-  return sheetName_(register, 'MASTER LIST');
-}
-
-function receivedSheet_(register){
-  return sheetName_(register, 'ALL RECEIVED AMMOUNT');
-}
-
-function dashboardSheet_(register){
-  return sheetName_(register, 'DASHBOARD');
-}
-
-function setup(){
-  REGISTERS.forEach(r =&gt; {
-    createSchemeSheet_(r,'AAY');
-    createSchemeSheet_(r,'PHH');
-    createSchemeSheet_(r,'SFSS');
-    createPrintSheet_(r,'AAY');
-    createPrintSheet_(r,'PHH');
-    createPrintSheet_(r,'SFSS');
-    createMasterSheet_(r);
-    createReceivedSheet_(r);
-    createDashboardSheet_(r);
-  });
-
-  const old = ss_().getSheetByName('RICE_DATA');
-  if (old &amp;&amp; old.getLastRow() &lt;= 1) {
-    // Keep the old placeholder sheet harmlessly available.
-  }
-
-  console.log('Reference-format sheets created successfully.');
-}
-
-function createSchemeSheet_(register, scheme){
-  const ss = ss_();
-  const name = schemeSheet_(register, scheme);
-  let sh = ss.getSheetByName(name);
-  if (!sh) sh = ss.insertSheet(name);
-
-  sh.getRange('A1:AP40').clearContent();
-
-  sh.getRange('A1').setValue(scheme + ' RICE DISTRIBUTION REGISTER (ISOLATED MONTHS) — ' + register);
-  const monthCols = ['B','H','N','T','Z','AF','AL'];
-
-  PERIOD_MONTHS.forEach((m, i) =&gt; {
-    const c = monthCols[i];
-    sh.getRange(c+'1').setValue(m.label);
-    sh.getRange(c+'2').setValue('Opening');
-    sh.getRange(nextCol_(c)+'2').setValue('Receive');
-    sh.getRange(nextCol_(c,2)+'2').setValue('Total');
-    sh.getRange(nextCol_(c,3)+'2').setValue('Selling');
-    sh.getRange(nextCol_(c,4)+'2').setValue('Closing');
-
-    const dim = new Date(m.y, m.m, 0).getDate();
-    for (let d=1; d&lt;=31; d++){
-      const row = 2+d;
-      sh.getRange('A'+row).setValue(d);
-      if (d &lt;= dim){
-        const b = BLOCKS[m.key];
-        const prevClose = d===1 ? null : b.close + (b.startRow + d - 2);
-        if (d===1){
-          sh.getRange(b.opening+'3').setValue(0);
-        } else {
-          sh.getRange(b.opening+(row-1)).setFormula('=' + prevClose);
-        }
-        sh.getRange(b.total+row-3).setFormula('=' + b.opening + (row-3) + '+' + b.receive + (row-3));
-        sh.getRange(b.close+row-3).setFormula('=' + b.total + (row-3) + '-' + b.sold + (row-3));
-      }
-    }
-    const tr=b.totalRow;
-    sh.getRange(b.opening+tr).setFormula('=' + b.opening + '3');
-    sh.getRange(b.receive+tr).setFormula('=SUM(' + b.receive + '3:' + b.receive + '33)');
-    sh.getRange(b.total+tr).setFormula('=' + b.opening + tr + '+' + b.receive + tr);
-    sh.getRange(b.sold+tr).setFormula('=SUM(' + b.sold + '3:' + b.sold + '33)');
-    sh.getRange(b.close+tr).setFormula('=' + b.total + tr + '-' + b.sold + tr);
-  });
-
-  sh.getRange('A34').setValue('TOTAL');
-  sh.setFrozenRows(2);
-}
-
-function createPrintSheet_(register, scheme){
-  const ss=ss_();
-  const name=printSheet_(register,scheme);
-  let sh=ss.getSheetByName(name);
-  if(!sh) sh=ss.insertSheet(name);
-
-  sh.getRange('A1:H40').clearContent();
-  sh.getRange('A1').setValue('MONTH/YEAR -');
-  sh.getRange('B1').setValue('SEPTEMBER 2026 - MARCH 2027');
-  sh.getRange('A2').setValue('FPS STOCK REGISTER / FPS CODE NO. - 0201 P100');
-  sh.getRange('G2').setValue('SCHEME -');
-  sh.getRange('H2').setValue(register + ' RICE - ' + scheme);
-  sh.getRange('A3:H3').setValues([[
-    'DATE OF TRANSACTION','OPENING BALANCE','RECEIPT','TOTAL',
-    'NO. OF CARDS','QUANTITY','CLOSING BALANCE','REMARKS'
-  ]]);
-
-  // Rows are filled from the selected scheme-format sheet during refresh.
-  for(let i=0;i&lt;31;i++){
-    const row=4+i;
-    const day=i+1;
-    sh.getRange('A'+row).setValue(day);
-  }
-  sh.setFrozenRows(3);
-}
-
-function createMasterSheet_(register){
-  const ss=ss_();
-  const name=masterSheet_(register);
-  let sh=ss.getSheetByName(name);
-  if(!sh) sh=ss.insertSheet(name);
-  sh.getRange('A1:K80').clearContent();
-  sh.getRange('A1').setValue('MASTER LIST — '+register);
-  sh.getRange('A2:H2').setValues([[
-    'Date','Scheme','Opening','Received','Total','Selling','Closing','Remarks'
-  ]]);
-  sh.setFrozenRows(2);
-}
-
-function createReceivedSheet_(register){
-  const ss=ss_();
-  const name=receivedSheet_(register);
-  let sh=ss.getSheetByName(name);
-  if(!sh) sh=ss.insertSheet(name);
-  sh.getRange('A1:G30').clearContent();
-  sh.getRange('A1').setValue('CMAY RICE ALLOCATION &amp; STOCK RECEIPT REGISTER — '+register);
-  sh.getRange('A2').setValue('CONSOLIDATED MONTHLY SUMMARY &amp; AUTOMATIC DAILY RECEIPT LOG');
-  sh.getRange('A4:G4').setValues([[
-    'Month / Year','AAY Received (kg)','PHH Received (kg)',
-    'SFSS Received (kg)','Month Total Received (kg)','Allocation %',
-    'Monthly Inflow Status'
-  ]]);
-  PERIOD_MONTHS.forEach((m,i)=&gt;{
-    sh.getRange(5+i,1).setValue(m.label);
-  });
-}
-
-function createDashboardSheet_(register){
-  const ss=ss_();
-  const name=dashboardSheet_(register);
-  let sh=ss.getSheetByName(name);
-  if(!sh) sh=ss.insertSheet(name);
-  sh.getRange('A1:G25').clearContent();
-  sh.getRange('A1').setValue('RICE DISTRIBUTION &amp; PENDING STOCK DASHBOARD — '+register);
-  sh.getRange('A3:G3').setValues([[
-    'Month','Opening','Received','Total','Sold','Closing','Status'
-  ]]);
-}
-
-/* Helpers */
-
-function colNum_(letters){
-  let n=0;
-  for(let i=0;i&lt;letters.length;i++) n=n*26+(letters.charCodeAt(i)-64);
-  return n;
-}
-
-function colLetters_(n){
-  let s='';
-  while(n&gt;0){
-    let r=(n-1)%26;
-    s=String.fromCharCode(65+r)+s;
-    n=Math.floor((n-1)/26);
-  }
-  return s;
-}
-
-function nextCol_(c, offset){
-  offset = Number(offset || 1);
-  return colLetters_(colNum_(c)+offset);
-}
-
-function monthBlock_(month){
-  return BLOCKS[month];
-}
-
-function sheetRowForDate_(date){
-  const month=date.slice(0,7);
-  const day=Number(date.slice(8,10));
-  const b=monthBlock_(month);
-  return {month,day,row:b.startRow + day - 1, block:b};
-}
-
-function ensureAllReferenceSheets_(){
-  REGISTERS.forEach(r=&gt;{
-    if(!ss_().getSheetByName(schemeSheet_(r,'AAY'))) createSchemeSheet_(r,'AAY');
-    if(!ss_().getSheetByName(schemeSheet_(r,'PHH'))) createSchemeSheet_(r,'PHH');
-    if(!ss_().getSheetByName(schemeSheet_(r,'SFSS'))) createSchemeSheet_(r,'SFSS');
-    if(!ss_().getSheetByName(printSheet_(r,'AAY'))) createPrintSheet_(r,'AAY');
-    if(!ss_().getSheetByName(printSheet_(r,'PHH'))) createPrintSheet_(r,'PHH');
-    if(!ss_().getSheetByName(printSheet_(r,'SFSS'))) createPrintSheet_(r,'SFSS');
-    if(!ss_().getSheetByName(masterSheet_(r))) createMasterSheet_(r);
-    if(!ss_().getSheetByName(receivedSheet_(r))) createReceivedSheet_(r);
-    if(!ss_().getSheetByName(dashboardSheet_(r))) createDashboardSheet_(r);
-  });
-}
-
-function writeSchemeEntry_(r){
-  const register=r.register;
-  const scheme=r.scheme;
-  const date=String(r.date);
-  const loc=sheetRowForDate_(date);
-  const sh=ss_().getSheetByName(schemeSheet_(register,scheme));
-
-  if(!sh) throw new Error('Reference sheet missing: '+schemeSheet_(register,scheme));
-
-  const b=loc.block;
-  const row=loc.row;
-
-  // Opening: preserve the reference-format carry-forward formulas.
-  if(r._deleted){
-    sh.getRange(b.receive+row).clearContent();
-    sh.getRange(b.sold+row).clearContent();
-    return;
-  }
-
-  if(r.openingMode==='manual'){
-    sh.getRange(b.opening+row).setValue(Number(r.opening || 0));
-  } else {
-    if(loc.day===1){
-      // Carry from previous month's final closing.
-      const idx=PERIOD_MONTHS.findIndex(m=&gt;m.key===loc.month);
-      if(idx&gt;0){
-        const prev=PERIOD_MONTHS[idx-1];
-        const pb=BLOCKS[prev.key];
-        sh.getRange(b.opening+row).setFormula(
-          "='"+schemeSheet_(register,scheme)+"'!"+pb.close+pb.totalRow
-        );
-      }
-    } else {
-      sh.getRange(b.opening+row).setFormula(
-        "='"+schemeSheet_(register,scheme)+"'!"+b.close+(row-1)
-      );
-    }
-  }
-
-  sh.getRange(b.receive+row).setValue(Number(r.received || 0));
-  sh.getRange(b.sold+row).setValue(Number(r.sold || 0));
-
-  sh.getRange(b.total+row).setFormula(
-    '='+b.opening+row+'+'+b.receive+row
-  );
-  sh.getRange(b.close+row).setFormula(
-    '='+b.total+row+'-'+b.sold+row
-  );
-
-  updatePrintRow_(register,scheme,date);
-}
-
-function updatePrintRow_(register,scheme,date){
-  const loc=sheetRowForDate_(date);
-  const src=ss_().getSheetByName(schemeSheet_(register,scheme));
-  const out=ss_().getSheetByName(printSheet_(register,scheme));
-  const row=4+loc.day-1;
-  const b=loc.block;
-
-  out.getRange(row,1,1,8).setValues([[
-    date,
-    src.getRange(b.opening+loc.row).getValue(),
-    src.getRange(b.receive+loc.row).getValue(),
-    src.getRange(b.total+loc.row).getValue(),
-    '',
-    src.getRange(b.sold+loc.row).getValue(),
-    src.getRange(b.close+loc.row).getValue(),
-    ''
-  ]]);
-}
-
-function refreshMaster_(register){
-  const sh=ss_().getSheetByName(masterSheet_(register));
-  sh.getRange('A3:H5000').clearContent();
-
-  const rows=[];
-  REGISTERS.includes(register);
-
-  SCHEMES.forEach(scheme=&gt;{
-    const source=ss_().getSheetByName(schemeSheet_(register,scheme));
-
-    PERIOD_MONTHS.forEach(m=&gt;{
-      const b=BLOCKS[m.key];
-      const dim=new Date(m.y,m.m,0).getDate();
-
-      for(let d=1;d&lt;=dim;d++){
-        const row=b.startRow+d-1;
-        const received=Number(source.getRange(b.receive+row).getValue()||0);
-        const sold=Number(source.getRange(b.sold+row).getValue()||0);
-        const opening=Number(source.getRange(b.opening+row).getValue()||0);
-
-        if(received || sold || opening){
-          rows.push([
-            m.key+'-'+String(d).padStart(2,'0'),
-            scheme,
-            opening,
-            received,
-            Number(source.getRange(b.total+row).getValue()||0),
-            sold,
-            Number(source.getRange(b.close+row).getValue()||0),
-            ''
-          ]);
-        }
-      }
-    });
-  });
-
-  if(rows.length){
-    sh.getRange(3,1,rows.length,8).setValues(rows);
-  }
-}
-
-function refreshReceived_(register){
-  const sh=ss_().getSheetByName(receivedSheet_(register));
-
-  PERIOD_MONTHS.forEach((m,i)=&gt;{
-    const vals=SCHEMES.map(scheme=&gt;{
-      const src=ss_().getSheetByName(schemeSheet_(register,scheme));
-      const b=BLOCKS[m.key];
-      return Number(src.getRange(b.receive+b.totalRow).getValue()||0);
-    });
-
-    const total=vals[0]+vals[1]+vals[2];
-    sh.getRange(5+i,1,1,7).setValues([[
-      m.label, vals[0], vals[1], vals[2], total,
-      total&gt;0 ? total/Math.max(total,1) : 0,
-      total&gt;0 ? 'Stock Received' : 'No Inflow'
-    ]]);
-  });
-}
-
-function refreshDashboard_(register){
-  const sh=ss_().getSheetByName(dashboardSheet_(register));
-  sh.getRange('A4:G20').clearContent();
-
-  const rows=[];
-  PERIOD_MONTHS.forEach(m=&gt;{
-    let opening=0,received=0,sold=0,closing=0;
-
-    SCHEMES.forEach(scheme=&gt;{
-      const src=ss_().getSheetByName(schemeSheet_(register,scheme));
-      const b=BLOCKS[m.key];
-      opening += Number(src.getRange(b.opening+'3').getValue()||0);
-      received += Number(src.getRange(b.receive+b.totalRow).getValue()||0);
-      sold += Number(src.getRange(b.sold+b.totalRow).getValue()||0);
-      closing += Number(src.getRange(b.close+b.totalRow).getValue()||0);
-    });
-
-    rows.push([
-      m.label,
-      opening,
-      received,
-      opening+received,
-      sold,
-      closing,
-      closing&lt;0 ? 'CHECK' : 'OK'
-    ]);
-  });
-
-  if(rows.length) sh.getRange(4,1,rows.length,7).setValues(rows);
-}
-
-/* Web API */
-
-function doGet(e){
-  try{
-    ensureAllReferenceSheets_();
-
-    const p=e.parameter||{};
-
-    if(p.action==='ping'){
-      return _json({
-        ok:true,
-        success:true,
-        at:new Date().toISOString()
-      });
-    }
-
-    if(p.action==='readReference'){
-      const register=p.register;
-      const scheme=p.scheme;
-
-      if(!REGISTERS.includes(register)) throw new Error('Invalid register');
-      if(!SCHEMES.includes(scheme)) throw new Error('Invalid scheme');
-
-      const sh=ss_().getSheetByName(schemeSheet_(register,scheme));
-      const rows=[];
-
-      PERIOD_MONTHS.forEach(m=&gt;{
-        const b=BLOCKS[m.key];
-        const dim=new Date(m.y,m.m,0).getDate();
-
-        for(let d=1;d&lt;=dim;d++){
-          const row=b.startRow+d-1;
-          const openingFormula=sh.getRange(b.opening+row).getFormula();
-          const openingValue=sh.getRange(b.opening+row).getValue();
-
-          rows.push({
-            id:register+'|'+scheme+'|'+m.key+'-'+String(d).padStart(2,'0'),
-            register,
-            scheme,
-            date:m.key+'-'+String(d).padStart(2,'0'),
-            month:m.key,
-            openingMode: openingFormula &amp;&amp; openingFormula.indexOf('!')&gt;=0 ? 'carry' : 'manual',
-            opening: openingValue === '' ? null : Number(openingValue||0),
-            received:Number(sh.getRange(b.receive+row).getValue()||0),
-            total:Number(sh.getRange(b.total+row).getValue()||0),
-            sold:Number(sh.getRange(b.sold+row).getValue()||0),
-            closing:Number(sh.getRange(b.close+row).getValue()||0),
-            remarks:''
-          });
-        }
-      });
-
-      return _json({ok:true,rows});
-    }
-
-    return _json({ok:false,err:'unknown action'});
-  }catch(err){
-    return _json({ok:false,err:String(err.message||err)});
-  }
-}
-
-function doPost(e){
-  try{
-    ensureAllReferenceSheets_();
-
-    const body=JSON.parse(e.postData.contents||'{}');
-
-    if(body.action!=='upsert'){
-      return _json({ok:false,err:'unknown action'});
-    }
-
-    const rows=body.rows||[];
-    let updated=0, inserted=0, deleted=0;
-
-    rows.forEach(r=&gt;{
-      if(!REGISTERS.includes(r.register)) throw new Error('Invalid register: '+r.register);
-      if(!SCHEMES.includes(r.scheme)) throw new Error('Invalid scheme: '+r.scheme);
-
-      writeSchemeEntry_(r);
-      updated++;
-      if(r._deleted) deleted++;
-    });
-
-    const registersToRefresh=[...new Set(rows.map(r=&gt;r.register))];
-
-    registersToRefresh.forEach(register=&gt;{
-      refreshMaster_(register);
-      refreshReceived_(register);
-      refreshDashboard_(register);
-    });
-
-    return _json({
-      ok:true,
-      success:true,
-      updated,
-      inserted,
-      deleted,
-      mode:'reference'
-    });
-  }catch(err){
-    return _json({ok:false,err:String(err.message||err)});
-  }
-}
-
-function _json(o){
-  return ContentService
-    .createTextOutput(JSON.stringify(o))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-</pre></details>
+ *
+ * The frontend selects the correct /exec URL from Settings:
+ *   NFSA Apps Script URL → NFSA Sheet
+ *   CMAY Apps Script URL → CMAY Sheet
+ *
+ * Dealer Name / Code / Place are sent with every sync payload.
+ */</pre></details>
     </div>
 
     <div class="card" style="margin-top:12px">
       <h3>About</h3>
       <ul>
-        <li>Version: <strong>1.3.0</strong></li>
+        <li>Version: <strong>1.5.0</strong></li>
         <li>Device ID: <span class="mono">${DEVICE_ID}</span></li>
-        <li>Registers: <strong>NFSA</strong> and <strong>CMAY</strong> — data namespaces are fully isolated.</li>
+        <li>Registers: <strong>NFSA</strong> and <strong>CMAY</strong> — separate Google Sheets / endpoints.</li>
+        <li>Card schemes: <strong>AAY</strong>, <strong>PHH</strong>, <strong>SFSS</strong>.</li>
         <li>Accounting period: September 2026 – March 2027.</li>
         <li>PWA: works offline once loaded; installable from browser menu.</li>
-        <li>Printing: guaranteed white background + black text via CSS + JS combined override.</li>
+        <li>Printing: guaranteed white background + black text.</li>
       </ul>
     </div>
   `;
+
   $('#stSave').addEventListener('click', async ()=>{
-    const v = ($('#stUrl').value || '').trim();
-    await setSetting('gasUrl', v);
+    const nfsa = ($('#stUrlNFSA').value || '').trim();
+    const cmay = ($('#stUrlCMAY').value || '').trim();
+    const name = ($('#stDealerName').value || '').trim();
+    const code = ($('#stDealerCode').value || '').trim() || PROFILE_DEFAULTS.dealerCode;
+    const place = ($('#stDealerPlace').value || '').trim();
+
+    await setSetting('gasUrlNFSA', nfsa);
+    await setSetting('gasUrlCMAY', cmay);
+    await setSetting('gasUrl', nfsa); // backward compatibility with old local configuration
+    await setSetting('dealerName', name);
+    await setSetting('dealerCode', code);
+    await setSetting('dealerPlace', place);
+
     toast('Settings saved','ok');
     updateSyncBadge();
+    // Refresh current page so dealer details appear immediately.
+    await go(state.page);
   });
-  $('#stTest').addEventListener('click', pingBackend);
+
+  $('#stTestNFSA').addEventListener('click', ()=> pingBackend('NFSA'));
+  $('#stTestCMAY').addEventListener('click', ()=> pingBackend('CMAY'));
   $('#stSync').addEventListener('click', ()=> trySync({force:true}));
 }
-
 /* ---------------- Download helper ---------------- */
 function downloadBlob(content, filename, mime){
   const blob = new Blob([content], {type:mime});
@@ -2774,6 +2382,14 @@ function downloadBlob(content, filename, mime){
 }
 
 /* ---------------- Boot ---------------- */
+async function applyProfileToShell(){
+  const p = await getProfile();
+  const sub = $('.brand .sub');
+  if (sub){
+    const bits = [p.dealerName, p.dealerCode, p.dealerPlace].filter(Boolean);
+    sub.textContent = bits.length ? bits.join(' · ') : `FPS Code ${FPS_CODE} · v1.5.0`;
+  }
+}
 function wireGlobal(){
   $$('#nav a').forEach(a => a.addEventListener('click', ()=> go(a.dataset.page)));
   $$('#bottomNav a').forEach(a => a.addEventListener('click', ()=> go(a.dataset.page)));
@@ -2823,6 +2439,7 @@ async function boot(){
   setScheme(state.scheme);
   wireGlobal();
   updateSyncBadge();
+  await applyProfileToShell();
   await go('dashboard');
 
   if ('serviceWorker' in navigator){
