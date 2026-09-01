@@ -9,7 +9,7 @@
 <link rel="icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='12' fill='%230f172a'/><text x='32' y='42' font-size='36' text-anchor='middle'>🍚</text></svg>" />
 <style>
 /* =============================================================
-   FPS Rice Register — global styles  (v1.3.0)
+   FPS Rice Register — global styles  (v1.4.0)
    ============================================================= */
 :root{
   --bg:#0b1220; --panel:#0f172a; --panel-2:#111c34; --card:#0e1a33;
@@ -380,7 +380,7 @@ hr.sep{border:0; border-top:1px solid var(--line); margin:12px 0}
       <div class="logo">🍚</div>
       <div>
         <div class="name">FPS Rice Register</div>
-        <div class="sub">FPS Code 0201 P100 · v1.3.0</div>
+        <div class="sub">FPS Code 0201 P100 · v1.4.0</div>
       </div>
     </div>
 
@@ -450,7 +450,7 @@ hr.sep{border:0; border-top:1px solid var(--line); margin:12px 0}
 
 <script>
 /* ================================================================
-   FPS Rice Register — v1.3.0
+   FPS Rice Register — v1.4.0
    Vanilla JS · IndexedDB · offline-first · Google Apps Script sync
    Bulletproof white-on-black printing.
    ================================================================ */
@@ -470,6 +470,50 @@ const MONTHS = [
   {key:'2027-03', label:'March 2027',     y:2027, m:3},
 ];
 const FPS_CODE = '0201 P100';
+
+/* ----------------------------------------------------------------
+   Reference workbook targets.
+   The visible UI is unchanged. Each register gets its own copy of
+   every reference-format worksheet so NFSA and CMAY never overwrite
+   each other while preserving the Excel layout.
+   ---------------------------------------------------------------- */
+const REF_SHEET_NAMES = {
+  dashboard: 'DASHBOARD',
+  master: 'MASTER LIST',
+  received: 'ALL RECEIVED AMMOUNT',
+  scheme: {
+    AAY: 'AAY',
+    PHH: 'PHH',
+    SFSS: 'SFSS'
+  },
+  print: {
+    AAY: 'AAY PRINT',
+    PHH: 'PHH PRINT',
+    SFSS: 'SFSS PRINT'
+  }
+};
+const REF_PREFIX = (register) => register + '_';
+
+const REF_BLOCKS = {
+  '2026-09': {startCol:'B', recvCol:'C', totalCol:'D', soldCol:'E', closeCol:'F'},
+  '2026-10': {startCol:'H', recvCol:'I', totalCol:'J', soldCol:'K', closeCol:'L'},
+  '2026-11': {startCol:'N', recvCol:'O', totalCol:'P', soldCol:'Q', closeCol:'R'},
+  '2026-12': {startCol:'T', recvCol:'U', totalCol:'V', soldCol:'W', closeCol:'X'},
+  '2027-01': {startCol:'Z', recvCol:'AA', totalCol:'AB', soldCol:'AC', closeCol:'AD'},
+  '2027-02': {startCol:'AF', recvCol:'AG', totalCol:'AH', soldCol:'AI', closeCol:'AJ'},
+  '2027-03': {startCol:'AL', recvCol:'AM', totalCol:'AN', soldCol:'AO', closeCol:'AP'}
+};
+
+function refSheetName(register, kind, scheme){
+  const prefix = REF_PREFIX(register);
+  if (kind === 'scheme') return prefix + REF_SHEET_NAMES.scheme[scheme];
+  if (kind === 'print') return prefix + REF_SHEET_NAMES.print[scheme];
+  if (kind === 'dashboard') return prefix + REF_SHEET_NAMES.dashboard;
+  if (kind === 'master') return prefix + REF_SHEET_NAMES.master;
+  if (kind === 'received') return prefix + REF_SHEET_NAMES.received;
+  return prefix + String(kind || '');
+}
+
 const DB_NAME  = 'fps-rice-db';
 const DB_VER   = 1;
 
@@ -675,6 +719,7 @@ async function trySync(opts={}){
 
   _syncing = true;
   let sent=0, failed=0, skipped=0;
+
   try {
     const all = await idbAll('syncQueue');
     if (!all.length) return {sent, failed, skipped};
@@ -682,26 +727,48 @@ async function trySync(opts={}){
     const now = Date.now();
     const eligible = opts.force ? all.slice()
       : all.filter(q => !q.nextRetryAt || q.nextRetryAt <= now);
+
     skipped = all.length - eligible.length;
     if (!eligible.length) return {sent, failed, skipped};
+
     eligible.sort((a,b) => (a.at||0) - (b.at||0));
 
     for (let i=0; i<eligible.length; i += SYNC_BATCH_SIZE){
       const batch = eligible.slice(i, i + SYNC_BATCH_SIZE);
-      const rows = batch.map(q => q.entry);
+      const rows = batch.map(q => q.entry).map(e => ({
+        ...e,
+        referenceSheet: refSheetName(e.register, 'scheme', e.scheme),
+        referencePrintSheet: refSheetName(e.register, 'print', e.scheme),
+        referenceMasterSheet: refSheetName(e.register, 'master'),
+        referenceReceivedSheet: refSheetName(e.register, 'received'),
+        referenceDashboardSheet: refSheetName(e.register, 'dashboard')
+      }));
+
       let ok = false, errMsg = '';
+
       try {
         const res = await fetch(url, {
           method:'POST',
           headers:{'Content-Type':'text/plain;charset=utf-8'},
-          body: JSON.stringify({action:'upsert', rows, deviceId: DEVICE_ID})
+          body: JSON.stringify({
+            action:'upsert',
+            mode:'reference',
+            rows,
+            deviceId: DEVICE_ID
+          })
         });
+
         if (!res.ok) throw new Error('HTTP '+res.status);
+
         const text = await res.text();
         try {
           const j = JSON.parse(text);
           if (j && j.ok === false) throw new Error(j.err || 'server rejected');
-        } catch(_){}
+        } catch(parseErr) {
+          /* Preserve backwards compatibility with APIs that return plain text. */
+          if (parseErr && /server rejected/i.test(parseErr.message || '')) throw parseErr;
+        }
+
         ok = true;
       } catch (err){
         errMsg = err && err.message || String(err);
@@ -709,7 +776,8 @@ async function trySync(opts={}){
 
       if (ok){
         for (const q of batch) await idbDelete('syncQueue', q.qid);
-        for (const r of rows){
+
+        for (const r of batch.map(q => q.entry)){
           const cur = await idbGet('entries', r.id);
           if (cur){
             cur.syncStatus = 'synced';
@@ -717,31 +785,37 @@ async function trySync(opts={}){
             await idbPut('entries', cur);
           }
         }
+
         sent += rows.length;
       } else {
         for (const q of batch){
           const attempts = (q.attempts || 0) + 1;
           const delay    = backoffMs(attempts);
+
           await idbPut('syncQueue', {
-            ...q, attempts,
+            ...q,
+            attempts,
             lastTriedAt: Date.now(),
             nextRetryAt: Date.now() + delay,
             lastError: errMsg.slice(0, 240)
           });
         }
+
         failed += batch.length;
         break;
       }
     }
 
-    if (sent && !failed)  toast(`Synced ${sent} record(s) to Google Sheets`,'ok');
+    if (sent && !failed)  toast(`Synced ${sent} record(s) to reference-format Google Sheets`,'ok');
     if (sent && failed)   toast(`Synced ${sent}, ${failed} will retry`,'warn');
     if (!sent && failed)  toast(`Sync failed for ${failed} — will retry`,'warn');
+
   } finally {
     _syncing = false;
     updateSyncBadge();
     scheduleNextSyncTick();
   }
+
   return {sent, failed, skipped};
 }
 
@@ -761,6 +835,72 @@ async function requestBackgroundSync(){
       await reg.sync.register('fps-rice-sync');
     }
   } catch (_){}
+}
+
+/* ----------------------------------------------------------------
+   Pull data back from the reference-format sheets.
+   This keeps a second device/browser in sync with the same visible
+   workbook-format sheets.
+   ---------------------------------------------------------------- */
+async function pullReferenceData(register, scheme){
+  const url = await getSetting('gasUrl','');
+  if (!url || !navigator.onLine) return {loaded:0};
+
+  try {
+    const u = new URL(url);
+    u.searchParams.set('action','readReference');
+    u.searchParams.set('register',register);
+    u.searchParams.set('scheme',scheme);
+
+    const r = await fetch(u.toString(), {method:'GET'});
+    if (!r.ok) throw new Error('HTTP '+r.status);
+
+    const j = await r.json();
+    if (!j || j.ok === false || !Array.isArray(j.rows)) return {loaded:0};
+
+    let loaded=0;
+    for (const row of j.rows){
+      if (!row || !row.date) continue;
+
+      const existing = await getEntry(register, scheme, row.date);
+      const rec = {
+        id: existing ? existing.id : (row.id || uid()),
+        key: makeKey(register, scheme, row.date),
+        register,
+        scheme,
+        date: row.date,
+        month: monthKey(row.date),
+        opening: row.openingMode === 'manual' ? num(row.opening) : null,
+        openingMode: row.openingMode === 'manual' ? 'manual' : 'carry',
+        received: num(row.received),
+        sold: num(row.sold),
+        remarks: row.remarks || '',
+        createdAt: existing?.createdAt || row.createdAt || new Date().toISOString(),
+        updatedAt: row.updatedAt || new Date().toISOString(),
+        deviceId: row.deviceId || DEVICE_ID,
+        syncStatus: 'synced',
+        lastSyncedAt: new Date().toISOString()
+      };
+
+      await idbPut('entries', rec);
+      loaded++;
+    }
+
+    return {loaded};
+  } catch(err){
+    console.warn('Reference pull failed:', err);
+    return {loaded:0, error:err.message};
+  }
+}
+
+async function pullAllReferenceData(){
+  if (!navigator.onLine) return;
+  for (const register of REGISTERS){
+    for (const scheme of SCHEMES){
+      await pullReferenceData(register, scheme);
+    }
+  }
+  updateSyncBadge();
 }
 
 async function pingBackend(){
@@ -2075,81 +2215,529 @@ async function renderSettings(root){
 
     <div class="card" style="margin-top:12px">
       <h3>Google Apps Script — paste into a script bound to your Sheet</h3>
-      <p class="help">Accepts <code>GET ?action=ping</code>, <code>GET ?action=read&amp;register=NFSA&amp;scheme=AAY</code>, and <code>POST {action:'upsert', rows:[…]}</code>. Writes to a sheet named <strong>FPS_Rice_Data</strong> keyed by <code>register|scheme|date</code>.</p>
+      <p class="help">The reference-format backend writes directly to separate copies of every workbook tab for <strong>NFSA</strong> and <strong>CMAY</strong>. Examples: <strong>NFSA_AAY</strong>, <strong>CMAY_AAY</strong>, <strong>NFSA_AAY PRINT</strong>, and the corresponding Master List / All Received Amount / Dashboard sheets.</p>
       <details><summary class="btn sm">Show script</summary>
-<pre class="calc-box" style="white-space:pre; max-height:420px; overflow:auto">/** FPS Rice Register — Google Apps Script backend
- *  Deploy: Extensions → Apps Script → paste this file → Deploy →
- *  New deployment → Web App → Execute as Me → Access: Anyone.
- *  Copy the /exec URL into the app's Settings.
+<pre class="calc-box" style="white-space:pre; max-height:420px; overflow:auto">/** FPS Rice Register — reference-format Google Apps Script backend
+ *
+ * This version writes directly into reference-format worksheet copies:
+ *   NFSA_AAY, NFSA_PHH, NFSA_SFSS
+ *   CMAY_AAY, CMAY_PHH, CMAY_SFSS
+ *   ... plus per-register MASTER LIST, ALL RECEIVED AMMOUNT,
+ *       DASHBOARD and print sheets.
+ *
+ * Deploy:
+ * Extensions → Apps Script → paste this file → Deploy →
+ * New deployment → Web App → Execute as Me → Anyone.
  */
-const SHEET_NAME = 'FPS_Rice_Data';
-const HEADERS = ['recordId','register','scheme','date','month','openingMode','opening','received','total','sold','closing','remarks','createdAt','updatedAt','deviceId','syncStatus','deleted'];
 
-function _sheet(){
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sh = ss.getSheetByName(SHEET_NAME);
-  if (!sh){
-    sh = ss.insertSheet(SHEET_NAME);
-    sh.appendRow(HEADERS);
-    sh.setFrozenRows(1);
-  }
-  return sh;
+const PERIOD_MONTHS = [
+  {key:'2026-09', label:'September 2026', y:2026, m:9},
+  {key:'2026-10', label:'October 2026', y:2026, m:10},
+  {key:'2026-11', label:'November 2026', y:2026, m:11},
+  {key:'2026-12', label:'December 2026', y:2026, m:12},
+  {key:'2027-01', label:'January 2027',  y:2027, m:1},
+  {key:'2027-02', label:'February 2027', y:2027, m:2},
+  {key:'2027-03', label:'March 2027',     y:2027, m:3}
+];
+
+const REGISTERS = ['NFSA','CMAY'];
+const SCHEMES   = ['AAY','PHH','SFSS'];
+
+const BLOCKS = {
+  '2026-09': {opening:'B', receive:'C', total:'D', sold:'E', close:'F', startRow:3, totalRow:34},
+  '2026-10': {opening:'H', receive:'I', total:'J', sold:'K', close:'L', startRow:3, totalRow:34},
+  '2026-11': {opening:'N', receive:'O', total:'P', sold:'Q', close:'R', startRow:3, totalRow:34},
+  '2026-12': {opening:'T', receive:'U', total:'V', sold:'W', close:'X', startRow:3, totalRow:34},
+  '2027-01': {opening:'Z', receive:'AA', total:'AB', sold:'AC', close:'AD', startRow:3, totalRow:34},
+  '2027-02': {opening:'AF', receive:'AG', total:'AH', sold:'AI', close:'AJ', startRow:3, totalRow:34},
+  '2027-03': {opening:'AL', receive:'AM', total:'AN', sold:'AO', close:'AP', startRow:3, totalRow:34}
+};
+
+function ss_(){
+  return SpreadsheetApp.getActiveSpreadsheet();
 }
-function _index(){
-  const sh = _sheet();
-  const values = sh.getDataRange().getValues();
-  const idx = {};
-  for (let r=1; r&lt;values.length; r++){
-    const key = values[r][1] + '|' + values[r][2] + '|' + values[r][3];
-    idx[key] = r+1;
-  }
-  return {sh, idx, values};
+
+function sheetName_(register, base){
+  return register + '_' + base;
 }
+
+function schemeSheet_(register, scheme){
+  return sheetName_(register, scheme);
+}
+
+function printSheet_(register, scheme){
+  return sheetName_(register, scheme + ' PRINT');
+}
+
+function masterSheet_(register){
+  return sheetName_(register, 'MASTER LIST');
+}
+
+function receivedSheet_(register){
+  return sheetName_(register, 'ALL RECEIVED AMMOUNT');
+}
+
+function dashboardSheet_(register){
+  return sheetName_(register, 'DASHBOARD');
+}
+
+function setup(){
+  REGISTERS.forEach(r =&gt; {
+    createSchemeSheet_(r,'AAY');
+    createSchemeSheet_(r,'PHH');
+    createSchemeSheet_(r,'SFSS');
+    createPrintSheet_(r,'AAY');
+    createPrintSheet_(r,'PHH');
+    createPrintSheet_(r,'SFSS');
+    createMasterSheet_(r);
+    createReceivedSheet_(r);
+    createDashboardSheet_(r);
+  });
+
+  const old = ss_().getSheetByName('RICE_DATA');
+  if (old &amp;&amp; old.getLastRow() &lt;= 1) {
+    // Keep the old placeholder sheet harmlessly available.
+  }
+
+  console.log('Reference-format sheets created successfully.');
+}
+
+function createSchemeSheet_(register, scheme){
+  const ss = ss_();
+  const name = schemeSheet_(register, scheme);
+  let sh = ss.getSheetByName(name);
+  if (!sh) sh = ss.insertSheet(name);
+
+  sh.getRange('A1:AP40').clearContent();
+
+  sh.getRange('A1').setValue(scheme + ' RICE DISTRIBUTION REGISTER (ISOLATED MONTHS) — ' + register);
+  const monthCols = ['B','H','N','T','Z','AF','AL'];
+
+  PERIOD_MONTHS.forEach((m, i) =&gt; {
+    const c = monthCols[i];
+    sh.getRange(c+'1').setValue(m.label);
+    sh.getRange(c+'2').setValue('Opening');
+    sh.getRange(nextCol_(c)+'2').setValue('Receive');
+    sh.getRange(nextCol_(c,2)+'2').setValue('Total');
+    sh.getRange(nextCol_(c,3)+'2').setValue('Selling');
+    sh.getRange(nextCol_(c,4)+'2').setValue('Closing');
+
+    const dim = new Date(m.y, m.m, 0).getDate();
+    for (let d=1; d&lt;=31; d++){
+      const row = 2+d;
+      sh.getRange('A'+row).setValue(d);
+      if (d &lt;= dim){
+        const b = BLOCKS[m.key];
+        const prevClose = d===1 ? null : b.close + (b.startRow + d - 2);
+        if (d===1){
+          sh.getRange(b.opening+'3').setValue(0);
+        } else {
+          sh.getRange(b.opening+(row-1)).setFormula('=' + prevClose);
+        }
+        sh.getRange(b.total+row-3).setFormula('=' + b.opening + (row-3) + '+' + b.receive + (row-3));
+        sh.getRange(b.close+row-3).setFormula('=' + b.total + (row-3) + '-' + b.sold + (row-3));
+      }
+    }
+    const tr=b.totalRow;
+    sh.getRange(b.opening+tr).setFormula('=' + b.opening + '3');
+    sh.getRange(b.receive+tr).setFormula('=SUM(' + b.receive + '3:' + b.receive + '33)');
+    sh.getRange(b.total+tr).setFormula('=' + b.opening + tr + '+' + b.receive + tr);
+    sh.getRange(b.sold+tr).setFormula('=SUM(' + b.sold + '3:' + b.sold + '33)');
+    sh.getRange(b.close+tr).setFormula('=' + b.total + tr + '-' + b.sold + tr);
+  });
+
+  sh.getRange('A34').setValue('TOTAL');
+  sh.setFrozenRows(2);
+}
+
+function createPrintSheet_(register, scheme){
+  const ss=ss_();
+  const name=printSheet_(register,scheme);
+  let sh=ss.getSheetByName(name);
+  if(!sh) sh=ss.insertSheet(name);
+
+  sh.getRange('A1:H40').clearContent();
+  sh.getRange('A1').setValue('MONTH/YEAR -');
+  sh.getRange('B1').setValue('SEPTEMBER 2026 - MARCH 2027');
+  sh.getRange('A2').setValue('FPS STOCK REGISTER / FPS CODE NO. - 0201 P100');
+  sh.getRange('G2').setValue('SCHEME -');
+  sh.getRange('H2').setValue(register + ' RICE - ' + scheme);
+  sh.getRange('A3:H3').setValues([[
+    'DATE OF TRANSACTION','OPENING BALANCE','RECEIPT','TOTAL',
+    'NO. OF CARDS','QUANTITY','CLOSING BALANCE','REMARKS'
+  ]]);
+
+  // Rows are filled from the selected scheme-format sheet during refresh.
+  for(let i=0;i&lt;31;i++){
+    const row=4+i;
+    const day=i+1;
+    sh.getRange('A'+row).setValue(day);
+  }
+  sh.setFrozenRows(3);
+}
+
+function createMasterSheet_(register){
+  const ss=ss_();
+  const name=masterSheet_(register);
+  let sh=ss.getSheetByName(name);
+  if(!sh) sh=ss.insertSheet(name);
+  sh.getRange('A1:K80').clearContent();
+  sh.getRange('A1').setValue('MASTER LIST — '+register);
+  sh.getRange('A2:H2').setValues([[
+    'Date','Scheme','Opening','Received','Total','Selling','Closing','Remarks'
+  ]]);
+  sh.setFrozenRows(2);
+}
+
+function createReceivedSheet_(register){
+  const ss=ss_();
+  const name=receivedSheet_(register);
+  let sh=ss.getSheetByName(name);
+  if(!sh) sh=ss.insertSheet(name);
+  sh.getRange('A1:G30').clearContent();
+  sh.getRange('A1').setValue('CMAY RICE ALLOCATION &amp; STOCK RECEIPT REGISTER — '+register);
+  sh.getRange('A2').setValue('CONSOLIDATED MONTHLY SUMMARY &amp; AUTOMATIC DAILY RECEIPT LOG');
+  sh.getRange('A4:G4').setValues([[
+    'Month / Year','AAY Received (kg)','PHH Received (kg)',
+    'SFSS Received (kg)','Month Total Received (kg)','Allocation %',
+    'Monthly Inflow Status'
+  ]]);
+  PERIOD_MONTHS.forEach((m,i)=&gt;{
+    sh.getRange(5+i,1).setValue(m.label);
+  });
+}
+
+function createDashboardSheet_(register){
+  const ss=ss_();
+  const name=dashboardSheet_(register);
+  let sh=ss.getSheetByName(name);
+  if(!sh) sh=ss.insertSheet(name);
+  sh.getRange('A1:G25').clearContent();
+  sh.getRange('A1').setValue('RICE DISTRIBUTION &amp; PENDING STOCK DASHBOARD — '+register);
+  sh.getRange('A3:G3').setValues([[
+    'Month','Opening','Received','Total','Sold','Closing','Status'
+  ]]);
+}
+
+/* Helpers */
+
+function colNum_(letters){
+  let n=0;
+  for(let i=0;i&lt;letters.length;i++) n=n*26+(letters.charCodeAt(i)-64);
+  return n;
+}
+
+function colLetters_(n){
+  let s='';
+  while(n&gt;0){
+    let r=(n-1)%26;
+    s=String.fromCharCode(65+r)+s;
+    n=Math.floor((n-1)/26);
+  }
+  return s;
+}
+
+function nextCol_(c, offset){
+  offset = Number(offset || 1);
+  return colLetters_(colNum_(c)+offset);
+}
+
+function monthBlock_(month){
+  return BLOCKS[month];
+}
+
+function sheetRowForDate_(date){
+  const month=date.slice(0,7);
+  const day=Number(date.slice(8,10));
+  const b=monthBlock_(month);
+  return {month,day,row:b.startRow + day - 1, block:b};
+}
+
+function ensureAllReferenceSheets_(){
+  REGISTERS.forEach(r=&gt;{
+    if(!ss_().getSheetByName(schemeSheet_(r,'AAY'))) createSchemeSheet_(r,'AAY');
+    if(!ss_().getSheetByName(schemeSheet_(r,'PHH'))) createSchemeSheet_(r,'PHH');
+    if(!ss_().getSheetByName(schemeSheet_(r,'SFSS'))) createSchemeSheet_(r,'SFSS');
+    if(!ss_().getSheetByName(printSheet_(r,'AAY'))) createPrintSheet_(r,'AAY');
+    if(!ss_().getSheetByName(printSheet_(r,'PHH'))) createPrintSheet_(r,'PHH');
+    if(!ss_().getSheetByName(printSheet_(r,'SFSS'))) createPrintSheet_(r,'SFSS');
+    if(!ss_().getSheetByName(masterSheet_(r))) createMasterSheet_(r);
+    if(!ss_().getSheetByName(receivedSheet_(r))) createReceivedSheet_(r);
+    if(!ss_().getSheetByName(dashboardSheet_(r))) createDashboardSheet_(r);
+  });
+}
+
+function writeSchemeEntry_(r){
+  const register=r.register;
+  const scheme=r.scheme;
+  const date=String(r.date);
+  const loc=sheetRowForDate_(date);
+  const sh=ss_().getSheetByName(schemeSheet_(register,scheme));
+
+  if(!sh) throw new Error('Reference sheet missing: '+schemeSheet_(register,scheme));
+
+  const b=loc.block;
+  const row=loc.row;
+
+  // Opening: preserve the reference-format carry-forward formulas.
+  if(r._deleted){
+    sh.getRange(b.receive+row).clearContent();
+    sh.getRange(b.sold+row).clearContent();
+    return;
+  }
+
+  if(r.openingMode==='manual'){
+    sh.getRange(b.opening+row).setValue(Number(r.opening || 0));
+  } else {
+    if(loc.day===1){
+      // Carry from previous month's final closing.
+      const idx=PERIOD_MONTHS.findIndex(m=&gt;m.key===loc.month);
+      if(idx&gt;0){
+        const prev=PERIOD_MONTHS[idx-1];
+        const pb=BLOCKS[prev.key];
+        sh.getRange(b.opening+row).setFormula(
+          "='"+schemeSheet_(register,scheme)+"'!"+pb.close+pb.totalRow
+        );
+      }
+    } else {
+      sh.getRange(b.opening+row).setFormula(
+        "='"+schemeSheet_(register,scheme)+"'!"+b.close+(row-1)
+      );
+    }
+  }
+
+  sh.getRange(b.receive+row).setValue(Number(r.received || 0));
+  sh.getRange(b.sold+row).setValue(Number(r.sold || 0));
+
+  sh.getRange(b.total+row).setFormula(
+    '='+b.opening+row+'+'+b.receive+row
+  );
+  sh.getRange(b.close+row).setFormula(
+    '='+b.total+row+'-'+b.sold+row
+  );
+
+  updatePrintRow_(register,scheme,date);
+}
+
+function updatePrintRow_(register,scheme,date){
+  const loc=sheetRowForDate_(date);
+  const src=ss_().getSheetByName(schemeSheet_(register,scheme));
+  const out=ss_().getSheetByName(printSheet_(register,scheme));
+  const row=4+loc.day-1;
+  const b=loc.block;
+
+  out.getRange(row,1,1,8).setValues([[
+    date,
+    src.getRange(b.opening+loc.row).getValue(),
+    src.getRange(b.receive+loc.row).getValue(),
+    src.getRange(b.total+loc.row).getValue(),
+    '',
+    src.getRange(b.sold+loc.row).getValue(),
+    src.getRange(b.close+loc.row).getValue(),
+    ''
+  ]]);
+}
+
+function refreshMaster_(register){
+  const sh=ss_().getSheetByName(masterSheet_(register));
+  sh.getRange('A3:H5000').clearContent();
+
+  const rows=[];
+  REGISTERS.includes(register);
+
+  SCHEMES.forEach(scheme=&gt;{
+    const source=ss_().getSheetByName(schemeSheet_(register,scheme));
+
+    PERIOD_MONTHS.forEach(m=&gt;{
+      const b=BLOCKS[m.key];
+      const dim=new Date(m.y,m.m,0).getDate();
+
+      for(let d=1;d&lt;=dim;d++){
+        const row=b.startRow+d-1;
+        const received=Number(source.getRange(b.receive+row).getValue()||0);
+        const sold=Number(source.getRange(b.sold+row).getValue()||0);
+        const opening=Number(source.getRange(b.opening+row).getValue()||0);
+
+        if(received || sold || opening){
+          rows.push([
+            m.key+'-'+String(d).padStart(2,'0'),
+            scheme,
+            opening,
+            received,
+            Number(source.getRange(b.total+row).getValue()||0),
+            sold,
+            Number(source.getRange(b.close+row).getValue()||0),
+            ''
+          ]);
+        }
+      }
+    });
+  });
+
+  if(rows.length){
+    sh.getRange(3,1,rows.length,8).setValues(rows);
+  }
+}
+
+function refreshReceived_(register){
+  const sh=ss_().getSheetByName(receivedSheet_(register));
+
+  PERIOD_MONTHS.forEach((m,i)=&gt;{
+    const vals=SCHEMES.map(scheme=&gt;{
+      const src=ss_().getSheetByName(schemeSheet_(register,scheme));
+      const b=BLOCKS[m.key];
+      return Number(src.getRange(b.receive+b.totalRow).getValue()||0);
+    });
+
+    const total=vals[0]+vals[1]+vals[2];
+    sh.getRange(5+i,1,1,7).setValues([[
+      m.label, vals[0], vals[1], vals[2], total,
+      total&gt;0 ? total/Math.max(total,1) : 0,
+      total&gt;0 ? 'Stock Received' : 'No Inflow'
+    ]]);
+  });
+}
+
+function refreshDashboard_(register){
+  const sh=ss_().getSheetByName(dashboardSheet_(register));
+  sh.getRange('A4:G20').clearContent();
+
+  const rows=[];
+  PERIOD_MONTHS.forEach(m=&gt;{
+    let opening=0,received=0,sold=0,closing=0;
+
+    SCHEMES.forEach(scheme=&gt;{
+      const src=ss_().getSheetByName(schemeSheet_(register,scheme));
+      const b=BLOCKS[m.key];
+      opening += Number(src.getRange(b.opening+'3').getValue()||0);
+      received += Number(src.getRange(b.receive+b.totalRow).getValue()||0);
+      sold += Number(src.getRange(b.sold+b.totalRow).getValue()||0);
+      closing += Number(src.getRange(b.close+b.totalRow).getValue()||0);
+    });
+
+    rows.push([
+      m.label,
+      opening,
+      received,
+      opening+received,
+      sold,
+      closing,
+      closing&lt;0 ? 'CHECK' : 'OK'
+    ]);
+  });
+
+  if(rows.length) sh.getRange(4,1,rows.length,7).setValues(rows);
+}
+
+/* Web API */
+
 function doGet(e){
-  const p = e.parameter || {};
-  if (p.action === 'ping') return _json({ok:true, at:new Date().toISOString()});
-  if (p.action === 'read'){
-    const {sh, values} = _index();
-    const out = [];
-    for (let r=1; r&lt;values.length; r++){
-      const row = values[r];
-      if (p.register &amp;&amp; row[1] !== p.register) continue;
-      if (p.scheme   &amp;&amp; row[2] !== p.scheme)   continue;
-      const obj = {}; HEADERS.forEach((h,i)=> obj[h]=row[i]);
-      out.push(obj);
+  try{
+    ensureAllReferenceSheets_();
+
+    const p=e.parameter||{};
+
+    if(p.action==='ping'){
+      return _json({
+        ok:true,
+        success:true,
+        at:new Date().toISOString()
+      });
     }
-    return _json({ok:true, rows:out});
+
+    if(p.action==='readReference'){
+      const register=p.register;
+      const scheme=p.scheme;
+
+      if(!REGISTERS.includes(register)) throw new Error('Invalid register');
+      if(!SCHEMES.includes(scheme)) throw new Error('Invalid scheme');
+
+      const sh=ss_().getSheetByName(schemeSheet_(register,scheme));
+      const rows=[];
+
+      PERIOD_MONTHS.forEach(m=&gt;{
+        const b=BLOCKS[m.key];
+        const dim=new Date(m.y,m.m,0).getDate();
+
+        for(let d=1;d&lt;=dim;d++){
+          const row=b.startRow+d-1;
+          const openingFormula=sh.getRange(b.opening+row).getFormula();
+          const openingValue=sh.getRange(b.opening+row).getValue();
+
+          rows.push({
+            id:register+'|'+scheme+'|'+m.key+'-'+String(d).padStart(2,'0'),
+            register,
+            scheme,
+            date:m.key+'-'+String(d).padStart(2,'0'),
+            month:m.key,
+            openingMode: openingFormula &amp;&amp; openingFormula.indexOf('!')&gt;=0 ? 'carry' : 'manual',
+            opening: openingValue === '' ? null : Number(openingValue||0),
+            received:Number(sh.getRange(b.receive+row).getValue()||0),
+            total:Number(sh.getRange(b.total+row).getValue()||0),
+            sold:Number(sh.getRange(b.sold+row).getValue()||0),
+            closing:Number(sh.getRange(b.close+row).getValue()||0),
+            remarks:''
+          });
+        }
+      });
+
+      return _json({ok:true,rows});
+    }
+
+    return _json({ok:false,err:'unknown action'});
+  }catch(err){
+    return _json({ok:false,err:String(err.message||err)});
   }
-  return _json({ok:false, err:'unknown action'});
 }
+
 function doPost(e){
-  const body = JSON.parse(e.postData.contents || '{}');
-  if (body.action !== 'upsert') return _json({ok:false, err:'unknown action'});
-  const {sh, idx} = _index();
-  const rows = body.rows || [];
-  let inserted=0, updated=0, deleted=0;
-  for (const r of rows){
-    const opening = r.openingMode === 'manual' ? Number(r.opening||0) : '';
-    const openResolved = Number(r.opening || 0);
-    const total = openResolved + Number(r.received||0);
-    const closing = total - Number(r.sold||0);
-    const key = r.register + '|' + r.scheme + '|' + r.date;
-    const rowVals = [
-      r.id, r.register, r.scheme, r.date, r.month, r.openingMode,
-      opening, Number(r.received||0), total, Number(r.sold||0), closing,
-      r.remarks || '', r.createdAt || '', r.updatedAt || '',
-      r.deviceId || '', 'synced', r._deleted ? 1 : 0
-    ];
-    if (idx[key]){
-      sh.getRange(idx[key], 1, 1, HEADERS.length).setValues([rowVals]);
-      updated++; if (r._deleted) deleted++;
-    } else if (!r._deleted){
-      sh.appendRow(rowVals); inserted++;
+  try{
+    ensureAllReferenceSheets_();
+
+    const body=JSON.parse(e.postData.contents||'{}');
+
+    if(body.action!=='upsert'){
+      return _json({ok:false,err:'unknown action'});
     }
+
+    const rows=body.rows||[];
+    let updated=0, inserted=0, deleted=0;
+
+    rows.forEach(r=&gt;{
+      if(!REGISTERS.includes(r.register)) throw new Error('Invalid register: '+r.register);
+      if(!SCHEMES.includes(r.scheme)) throw new Error('Invalid scheme: '+r.scheme);
+
+      writeSchemeEntry_(r);
+      updated++;
+      if(r._deleted) deleted++;
+    });
+
+    const registersToRefresh=[...new Set(rows.map(r=&gt;r.register))];
+
+    registersToRefresh.forEach(register=&gt;{
+      refreshMaster_(register);
+      refreshReceived_(register);
+      refreshDashboard_(register);
+    });
+
+    return _json({
+      ok:true,
+      success:true,
+      updated,
+      inserted,
+      deleted,
+      mode:'reference'
+    });
+  }catch(err){
+    return _json({ok:false,err:String(err.message||err)});
   }
-  return _json({ok:true, inserted, updated, deleted});
 }
-function _json(o){ return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
+
+function _json(o){
+  return ContentService
+    .createTextOutput(JSON.stringify(o))
+    .setMimeType(ContentService.MimeType.JSON);
+}
 </pre></details>
     </div>
 
@@ -2243,7 +2831,10 @@ async function boot(){
     } catch (err){ console.warn('SW registration failed', err); }
   }
 
-  if (navigator.onLine) trySync();
+  if (navigator.onLine){
+    await pullAllReferenceData();
+    trySync();
+  }
   scheduleNextSyncTick();
   requestBackgroundSync();
 }
@@ -2251,5 +2842,6 @@ async function boot(){
 document.addEventListener('DOMContentLoaded', boot);
 })();
 </script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v3d52b47920f24c319d37e2661827c42b1787588026925" integrity="sha512-d9sL6GJLXn6fInD1+TVXhTcQOsmxeHfmHAvwGDIxp5TO+uo1fiWW7mHomMj4MLRlCsJDTqXzWLHJFFlPCEIj/A==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79"}' crossorigin="anonymous"></script>
 </body>
 </html>
